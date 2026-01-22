@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ドット絵エディタ Pro（パレット編集/画像パレット変換）</title>
+<style>
+  :root{ --gap: 8px; --panel-bg:#f6f7f9; --border:#d0d7de; --accent:#2563eb; }
+  body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN","Yu Gothic", Meiryo, sans-serif; color:#111; background:#fff; }
+  header{ padding:12px 16px; border-bottom:1px solid var(--border); background:#fff; position:sticky; top:0; z-index:10; }
+  h1{ font-size:18px; margin:0; }
+  main{ display:grid; grid-template-columns: 360px 1fr; gap: var(--gap); padding: var(--gap); }
+  @media (max-width: 980px){ main{ grid-template-columns: 1fr; } }
+  .panel{ background: var(--panel-bg); border:1px solid var(--border); border-radius:10px; padding:12px; }
+  .row{ display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  label{ font-size:12px; color:#444; }
+  input[type=number]{ width:92px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; }
+  input[type=text]{ width:100%; max-width: 420px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; }
+  input[type=color]{ width:44px; height:34px; padding:0; border:1px solid var(--border); border-radius:8px; background:#fff; }
+  select{ padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:#fff; }
+  input[type=file]{ display:none; }
+  button{ appearance:none; border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
+  button:hover{ border-color:#aaa; }
+  button.primary{ background: var(--accent); color:#fff; border-color: var(--accent); }
+  button.primary:hover{ filter:brightness(0.95); }
+  button.tool.selected, .swatch.selected{ outline:3px solid rgba(37,99,235,0.45); outline-offset:1px; }
+  .palette{ display:flex; flex-wrap:wrap; gap:8px; }
+  .swatch{
+    width:28px; height:28px; border-radius:6px; border:1px solid var(--border);
+    cursor:pointer; position:relative; padding:0;
+  }
+  .swatch.transparent::before{
+    content:""; position:absolute; inset:0;
+    background-image: conic-gradient(#ddd 25%, #bbb 0 50%, #ddd 0 75%, #bbb 0);
+    background-size: 8px 8px; border-radius:6px;
+  }
+  .swatch .del{
+    position:absolute; top:-7px; right:-7px;
+    width:16px; height:16px; border-radius:999px;
+    background:#fff; border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; line-height:1; color:#444;
+  }
+  .swatch .del:hover{ border-color:#999; }
+  .tools{ display:flex; gap:8px; flex-wrap:wrap; }
+  .canvas-wrap{ width: max-content; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff; }
+  #stage{
+    display:block; image-rendering: pixelated;
+    background-image: conic-gradient(#eee 25%, #ccc 0 50%, #eee 0 75%, #ccc 0);
+    background-size: 16px 16px; touch-action: none;
+  }
+  .footer-row{ margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  small.hint{ color:#666; }
+  .divider{ height:1px; background:var(--border); margin:12px 0; }
+  .kbd{ font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        background:#f3f4f6; border:1px solid #e5e7eb; padding:2px 6px; border-radius:4px; }
+  .pill{ font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:#fff; }
+  .warn{ color:#92400e; background:#fffbeb; border-color:#fde68a; }
+
+
+/* ===== モバイルUI（下部バー＋パレット引き出し） ===== */
+.mobile-bar{ display:none; }
+.drawer{ display:none; }
+
+@media (max-width: 860px){
+  main{
+    grid-template-columns: 1fr;
+    padding-bottom: 92px; /* 下部バー分の余白 */
+  }
+  button{ min-height: 44px; }
+  .swatch{ width:40px; height:40px; }
+  .canvas-wrap{ margin:0 auto; }
+
+  .mobile-bar{
+    display:block;
+    position: fixed;
+    left:0; right:0; bottom:0;
+    background:#fff;
+    border-top:1px solid var(--border);
+    z-index: 1000;
+    padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+  }
+  .mobile-row{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .mobile-row button{
+    flex:1;
+    font-weight:700;
+    border-radius:14px;
+  }
+  .mobile-row .mini{
+    flex:0 0 auto;
+    min-width:44px;
+  }
+
+  .drawer{
+    position: fixed;
+    left:10px; right:10px;
+    bottom: 92px;
+    max-height: 60vh;
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    z-index: 999;
+    display:none;
+    overflow:auto;
+  }
+  .drawer.open{ display:block; }
+  .drawer-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    border-bottom:1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background:#fff;
+  }
+  .drawer-body{ padding:12px; }
+}
+
+</style>
+</head>
+<body>
+<header><h1>ドット絵エディタ Pro（パレット編集/画像パレット変換）</h1></header>
+
+<main>
+  <section class="panel" id="controls">
+    <h2 style="font-size:14px;margin:4px 0 10px;">設定</h2>
+    <div class="row">
+      <label>横ドット数</label><input type="number" id="gridW" min="1" max="256" value="32" />
+      <label>縦ドット数</label><input type="number" id="gridH" min="1" max="256" value="32" />
+    </div>
+    <div class="row">
+      <label>表示倍率（セルサイズ px）</label>
+      <input type="number" id="cellSize" min="4" max="64" step="1" value="16" />
+      <button class="primary" id="apply" type="button">適用</button>
+      <button id="clear" type="button">クリア</button>
+    </div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">ツール</h2>
+    <div class="tools">
+      <button class="tool selected" id="toolPencil" title="B" type="button">鉛筆</button>
+      <button class="tool" id="toolEraser" title="E" type="button">消しゴム</button>
+      <button class="tool" id="toolEyedropper" title="I" type="button">スポイト</button>
+      <button class="tool" id="toolBucket" title="G" type="button">バケツ</button>
+    </div>
+
+    <div class="row">
+      <button id="undoBtn" title="Ctrl+Z" type="button">アンドゥ</button>
+      <button id="redoBtn" title="Ctrl+Y / Ctrl+Shift+Z" type="button">リドゥ</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">パレット（透過あり）</h2>
+    <div class="row" style="justify-content:space-between;">
+      <div class="row" style="margin:0;">
+        <label>追加</label>
+        <input type="color" id="palettePicker" value="#ff0000" />
+        <button id="addColorBtn" type="button">色を追加</button>
+        <button id="addCurrentBtn" type="button" title="スポイトで取得した色など">現在色を追加</button>
+      </div>
+      <span id="paletteInfo" class="pill warn">色数: 16</span>
+    </div>
+    <div class="palette" id="palette"></div>
+    <small class="hint">※各色の右上「×」で削除できます（透過は削除不可）。</small>
+
+    <div class="divider"></div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">PNGの保存・読み込み</h2>
+    <div class="row">
+      <label>保存倍率</label>
+      <input type="number" id="exportScale" min="1" max="64" step="1" value="1" />
+      <button class="primary" id="savePNG" type="button">PNG保存</button>
+    </div>
+
+    <div class="row">
+      <input type="file" id="fileInput" accept="image/png,image/*" />
+      <button id="loadPNG" type="button">画像読み込み</button>
+      <label>変換</label>
+      <select id="importMode">
+        <option value="palette" selected>パレット変換して反映</option>
+        <option value="raw">そのまま縮小して反映（変換なし）</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>ディザ</label>
+      <select id="ditherMode">
+        <option value="none" selected>なし</option>
+        <option value="fs">Floyd-Steinberg</option>
+      </select>
+      <label>透過しきい値</label>
+      <input type="number" id="alphaThreshold" min="0" max="255" value="1" />
+      <small class="hint">※αがこの値未満は透明扱い</small>
+    </div>
+    <small class="hint">※キャンバスへドラッグ&ドロップでも読み込み可（画像→現在のドット数＋パレットへ変換）。</small>
+
+    <div class="divider"></div>
+
+    <small class="hint">
+      右ドラッグで消しゴム。<span class="kbd">Ctrl+Z</span> でアンドゥ、
+      <span class="kbd">Ctrl+Y</span> or <span class="kbd">Ctrl+Shift+Z</span> でリドゥ。<br>
+      キー: <span class="kbd">B</span>=鉛筆 <span class="kbd">E</span>=消し <span class="kbd">I</span>=スポイト <span class="kbd">G</span>=バケツ
+    </small>
+  </section>
+
+  <section>
+    <div class="canvas-wrap">
+      <canvas id="stage" width="512" height="512"></canvas>
+    </div>
+    <div class="footer-row">
+      <small class="hint">ドラッグで連続描画。画像読み込みは「現在のドット数」にリサイズ後、（選択時）パレットへ量子化して反映します。</small>
+    </div>
+  </section>
+</main>
+
+
+
+<!-- ===== スマホ用：下部ツールバー（PCでは非表示） ===== -->
+<div class="mobile-bar" id="mobileBar">
+  <div class="mobile-row">
+    <button class="mini" id="mbUndo" type="button" title="Undo">↶</button>
+    <button id="mbPencil" type="button">鉛筆</button>
+    <button id="mbEraser" type="button">消し</button>
+    <button id="mbEye" type="button">スポ</button>
+    <button id="mbBucket" type="button">塗</button>
+    <button class="mini" id="mbPalette" type="button" title="Palette">🎨</button>
+    <button class="mini" id="mbRedo" type="button" title="Redo">↷</button>
+  </div>
+</div>
+
+<!-- ===== スマホ用：パレット引き出し（PCでは非表示） ===== -->
+<div class="drawer" id="paletteDrawer" aria-hidden="true">
+  <div class="drawer-header">
+    <strong style="font-size:13px;">パレット</strong>
+    <button id="drawerClose" type="button">閉じる</button>
+  </div>
+  <div class="drawer-body">
+    <div class="palette" id="drawerPalette"></div>
+
+    <div class="divider"></div>
+
+    <div class="row" style="margin-bottom:0;">
+      <label>追加</label>
+      <input type="color" id="drawerPicker" value="#ff0000" />
+      <button id="drawerAdd" type="button">追加</button>
+      <button id="drawerAddCurrent" type="button">現在色</button>
+      <span id="drawerInfo" class="pill warn">色数: 16</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(()=>{
+  // ===== 初期パレット（16色） =====
+  let paletteHex = [
+    "#000000","#ffffff","#c0c0c0","#808080",
+    "#ff0000","#00ff00","#0000ff","#ffff00",
+    "#00ffff","#ff00ff","#8b4513","#ffa500",
+    "#800000","#008080","#800080","#008000",
+  ];
+  const TRANSPARENT = "transparent";
+
+  // ===== DOM =====
+  const stage = document.getElementById("stage");
+  const ctx = stage.getContext("2d");
+  const gridWInput = document.getElementById("gridW");
+  const gridHInput = document.getElementById("gridH");
+  const cellSizeInput = document.getElementById("cellSize");
+  const applyBtn = document.getElementById("apply");
+  const clearBtn = document.getElementById("clear");
+  const saveBtn = document.getElementById("savePNG");
+  const exportScaleInput = document.getElementById("exportScale");
+  const paletteBox = document.getElementById("palette");
+  const palettePicker = document.getElementById("palettePicker");
+  const addColorBtn = document.getElementById("addColorBtn");
+  const addCurrentBtn = document.getElementById("addCurrentBtn");
+  const paletteInfo = document.getElementById("paletteInfo");
+
+  const toolPencil = document.getElementById("toolPencil");
+  const toolEraser = document.getElementById("toolEraser");
+  const toolEyedropper = document.getElementById("toolEyedropper");
+  const toolBucket = document.getElementById("toolBucket");
+  const undoBtn = document.getElementById("undoBtn");
+  const redoBtn = document.getElementById("redoBtn");
+
+  const fileInput = document.getElementById("fileInput");
+  const loadBtn = document.getElementById("loadPNG");
+  const importMode = document.getElementById("importMode");
+  const ditherMode = document.getElementById("ditherMode");
+  const alphaThresholdInput = document.getElementById("alphaThreshold");
+
+  // ===== 状態 =====
+  let gridW = parseInt(gridWInput.value, 10);
+  let gridH = parseInt(gridHInput.value, 10);
+  let cellSize = parseInt(cellSizeInput.value, 10);
+
+  // pixels[y][x] = null(透過) or [r,g,b,a]
+  let pixels = createPixels(gridW, gridH);
+
+  // 履歴
+  let undoStack = [];
+  let redoStack = [];
+  const HISTORY_LIMIT = 100;
+  let strokeStarted = false;
+
+  // ツール
+  let currentTool = "pencil";
+  let currentColor = hexToRgba(paletteHex[0]);
+  let lastPos = null;
+  let isDrawing = false;
+
+  // ===== 初期化 =====
+  buildPalette();
+  setupCanvas();
+  render();
+  updatePaletteInfo();
+
+  // ===== 基本ユーティリティ =====
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function createPixels(w,h){
+    const arr = new Array(h);
+    for(let y=0;y<h;y++) arr[y] = new Array(w).fill(null);
+    return arr;
+  }
+
+  function deepCopyPixels(src){
+    const h = src.length, w = src[0].length;
+    const out = new Array(h);
+    for(let y=0;y<h;y++){
+      const row = src[y];
+      const r = new Array(w);
+      for(let x=0;x<w;x++) r[x] = row[x] ? row[x].slice() : null;
+      out[y] = r;
+    }
+    return out;
+  }
+
+  function snapshot(){
+    return { gridW, gridH, pixels: deepCopyPixels(pixels), paletteHex: paletteHex.slice() };
+  }
+
+  function restore(snap){
+    gridW = snap.gridW; gridH = snap.gridH;
+    gridWInput.value = gridW; gridHInput.value = gridH;
+    paletteHex = snap.paletteHex.slice();
+    pixels = deepCopyPixels(snap.pixels);
+
+    // currentColor がパレット外なら先頭へ
+    if (currentColor){
+      const hex = rgbaToHex(currentColor);
+      if (!paletteHex.includes(hex)) currentColor = hexToRgba(paletteHex[0]);
+    }
+
+    buildPalette();
+    updatePaletteInfo();
+    setupCanvas();
+    render();
+  }
+
+  function pushHistory(){
+    undoStack.push(snapshot());
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack = [];
+  }
+
+  function undo(){
+    if (undoStack.length === 0) return;
+    const cur = snapshot();
+    const prev = undoStack.pop();
+    redoStack.push(cur);
+    restore(prev);
+  }
+
+  function redo(){
+    if (redoStack.length === 0) return;
+    const cur = snapshot();
+    const next = redoStack.pop();
+    undoStack.push(cur);
+    restore(next);
+  }
+
+  function hexToRgba(hex){
+    if (hex === TRANSPARENT || hex == null) return null;
+    const v = hex.replace("#", "");
+    const r = parseInt(v.slice(0,2),16);
+    const g = parseInt(v.slice(2,4),16);
+    const b = parseInt(v.slice(4,6),16);
+    return [r,g,b,255];
+  }
+
+  function rgbaToHex(px){
+    if (!px) return TRANSPARENT;
+    const hh = (n)=> n.toString(16).padStart(2,"0");
+    return `#${hh(px[0])}${hh(px[1])}${hh(px[2])}`;
+  }
+
+  function setupCanvas(){
+    stage.width = gridW * cellSize;
+    stage.height = gridH * cellSize;
+    stage.style.backgroundSize = `${cellSize}px ${cellSize}px`;
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  function render(){
+    ctx.clearRect(0,0,stage.width, stage.height);
+    for(let y=0;y<gridH;y++){
+      for(let x=0;x<gridW;x++){
+        const px = pixels[y][x];
+        if(px){
+          const r=px[0], g=px[1], b=px[2], a=px[3];
+          ctx.fillStyle = `rgba(${r},${g},${b},${a/255})`;
+          ctx.fillRect(x*cellSize, y*cellSize, cellSize, cellSize);
+        }
+      }
+    }
+    drawGridLines();
+  }
+
+  function drawGridLines(){
+    const stroke = "rgba(0,0,0,0.06)";
+    ctx.save();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let x=0;x<=gridW;x++){
+      ctx.moveTo(x*cellSize+0.5, 0);
+      ctx.lineTo(x*cellSize+0.5, gridH*cellSize);
+    }
+    for(let y=0;y<=gridH;y++){
+      ctx.moveTo(0, y*cellSize+0.5);
+      ctx.lineTo(gridW*cellSize, y*cellSize+0.5);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function canvasToGrid(clientX, clientY){
+    const rect = stage.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left) / cellSize);
+    const y = Math.floor((clientY - rect.top) / cellSize);
+    return {x,y};
+  }
+  function inBounds(x,y){ return x>=0 && y>=0 && x<gridW && y<gridH; }
+
+  function drawLineOnGrid(x0,y0,x1,y1, plotter){
+    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy, e2;
+    while(true){
+      plotter(x0,y0);
+      if(x0 === x1 && y0 === y1) break;
+      e2 = 2 * err;
+      if(e2 >= dy){ err += dy; x0 += sx; }
+      if(e2 <= dx){ err += dx; y0 += sy; }
+    }
+  }
+
+  // ===== パレット編集 =====
+  function normalizeHex(hex){
+    if (!hex) return null;
+    let h = hex.trim().toLowerCase();
+    if (!h.startsWith('#')) h = '#' + h;
+    if (h.length === 4){
+      // #rgb → #rrggbb
+      h = '#' + h[1]+h[1] + h[2]+h[2] + h[3]+h[3];
+    }
+    if (!/^#[0-9a-f]{6}$/.test(h)) return null;
+    return h;
+  }
+
+  function updatePaletteInfo(){
+    paletteInfo.textContent = `色数: ${paletteHex.length}`;
+    paletteInfo.className = "pill" + (paletteHex.length !== 16 ? " warn" : "");
+  }
+
+  function buildPalette(){
+    paletteBox.innerHTML = "";
+
+    // 透過スウォッチ
+    const transparentSw = document.createElement("button");
+    transparentSw.className = "swatch transparent";
+    transparentSw.title = "透過";
+    transparentSw.addEventListener("click", ()=>{
+      selectSwatch(transparentSw);
+      currentTool = "pencil"; selectToolButton(toolPencil);
+      currentColor = null;
+    });
+    paletteBox.appendChild(transparentSw);
+
+    // 色スウォッチ
+    paletteHex.forEach((hex)=>{
+      const sw = document.createElement("button");
+      sw.className = "swatch";
+      sw.style.backgroundColor = hex;
+      sw.title = hex;
+      sw.addEventListener("click", ()=>{
+        selectSwatch(sw);
+        currentColor = hexToRgba(hex);
+        currentTool = "pencil";
+        selectToolButton(toolPencil);
+      });
+
+      const del = document.createElement("span");
+      del.className = "del";
+      del.textContent = "×";
+      del.title = "この色を削除";
+      del.addEventListener("click", (e)=>{
+        e.stopPropagation();
+        removeColor(hex);
+      });
+      sw.appendChild(del);
+
+      paletteBox.appendChild(sw);
+    });
+
+    // 初期選択を整える
+    syncPaletteSelectionToCurrentColor();
+  }
+
+  function selectSwatch(el){
+    [...paletteBox.querySelectorAll(".swatch")].forEach(s => s.classList.remove("selected"));
+    el.classList.add("selected");
+  }
+
+  function syncPaletteSelectionToCurrentColor(){
+    const swatches = [...paletteBox.querySelectorAll(".swatch")];
+    const hex = rgbaToHex(currentColor);
+    let matched = false;
+    for(const sw of swatches){
+      if (sw.classList.contains("transparent") && hex === TRANSPARENT){ selectSwatch(sw); matched = true; break; }
+      if (sw.title && sw.title.toLowerCase() === hex){ selectSwatch(sw); matched = true; break; }
+    }
+    if (!matched && swatches.length){
+      // パレット内にない場合、選択表示だけ外す
+      swatches.forEach(s=>s.classList.remove("selected"));
+    }
+  }
+
+  function removeColor(hex){
+    if (paletteHex.length <= 1){
+      alert("色は最低1色必要です。");
+      return;
+    }
+    pushHistory();
+    paletteHex = paletteHex.filter(h => h !== hex);
+
+    // 削除した色を使っているピクセルは、最も近い残存色へ置換
+    const palRGBA = paletteHex.map(hexToRgba);
+    for(let y=0;y<gridH;y++){
+      for(let x=0;x<gridW;x++){
+        const p = pixels[y][x];
+        if (!p) continue;
+        const pHex = rgbaToHex(p);
+        if (pHex === hex){
+          pixels[y][x] = nearestToPalette(p, palRGBA);
+        }
+      }
+    }
+
+    // currentColor が削除されたら先頭色へ
+    if (rgbaToHex(currentColor) === hex) currentColor = hexToRgba(paletteHex[0]);
+
+    buildPalette();
+    updatePaletteInfo();
+    render();
+  }
+
+  function addColor(hex){
+    const h = normalizeHex(hex);
+    if (!h){ alert("不正な色です。"); return; }
+    if (paletteHex.includes(h)) { alert("すでにパレットにあります。"); return; }
+    pushHistory();
+    paletteHex.push(h);
+    buildPalette();
+    updatePaletteInfo();
+  }
+
+  // UI: 色追加
+  addColorBtn.addEventListener("click", ()=> addColor(palettePicker.value));
+  addCurrentBtn.addEventListener("click", ()=>{
+    if (!currentColor){
+      alert("現在色が透過です。透過はパレットに追加できません。");
+      return;
+    }
+    addColor(rgbaToHex(currentColor));
+  });
+
+  // ===== ツール選択 =====
+  function selectToolButton(btn){
+    [toolPencil, toolEraser, toolEyedropper, toolBucket].forEach(b=>b.classList.remove("selected"));
+    btn.classList.add("selected");
+  }
+  toolPencil.addEventListener("click", ()=>{ currentTool="pencil"; selectToolButton(toolPencil); });
+  toolEraser.addEventListener("click", ()=>{ currentTool="eraser"; selectToolButton(toolEraser); });
+  toolEyedropper.addEventListener("click", ()=>{ currentTool="eyedropper"; selectToolButton(toolEyedropper); });
+  toolBucket.addEventListener("click", ()=>{ currentTool="bucket"; selectToolButton(toolBucket); });
+
+  // ===== 設定/クリア =====
+  applyBtn.addEventListener("click", ()=>{
+    const newW = clamp(parseInt(gridWInput.value,10)||32, 1, 256);
+    const newH = clamp(parseInt(gridHInput.value,10)||32, 1, 256);
+    const newCell = clamp(parseInt(cellSizeInput.value,10)||16, 4, 64);
+    gridWInput.value = newW; gridHInput.value = newH; cellSizeInput.value = newCell;
+    pushHistory();
+    gridW = newW; gridH = newH; cellSize = newCell;
+    pixels = createPixels(gridW, gridH);
+    setupCanvas();
+    render();
+  });
+
+  clearBtn.addEventListener("click", ()=>{
+    pushHistory();
+    pixels = createPixels(gridW, gridH);
+    render();
+  });
+
+  // ===== 描画 =====
+  stage.addEventListener("mousedown", (e)=>{
+    e.preventDefault();
+    const isRight = (e.button === 2);
+
+    if (currentTool === "eyedropper"){
+      const pos = canvasToGrid(e.clientX, e.clientY);
+      if (inBounds(pos.x,pos.y)){
+        const p = pixels[pos.y][pos.x];
+        currentColor = p ? p.slice() : null;
+        currentTool = "pencil";
+        selectToolButton(toolPencil);
+        syncPaletteSelectionToCurrentColor();
+      }
+      return;
+    }
+
+    if (currentTool === "bucket"){
+      const pos = canvasToGrid(e.clientX, e.clientY);
+      if (inBounds(pos.x,pos.y)){
+        pushHistory();
+        const fill = (isRight || currentTool === "eraser") ? null : currentColor;
+        floodFill(pos.x, pos.y, fill);
+        render();
+      }
+      return;
+    }
+
+    isDrawing = true;
+    strokeStarted = false;
+    lastPos = { x: e.clientX, y: e.clientY };
+    paintAtEvent(e, isRight);
+  });
+
+  window.addEventListener("mousemove", (e)=>{
+    if (!isDrawing) return;
+    e.preventDefault();
+    const isRight = (e.buttons === 2);
+
+    const rect = stage.getBoundingClientRect();
+    const fromX = Math.floor((lastPos.x - rect.left) / cellSize);
+    const fromY = Math.floor((lastPos.y - rect.top) / cellSize);
+    const toX   = Math.floor((e.clientX - rect.left) / cellSize);
+    const toY   = Math.floor((e.clientY - rect.top) / cellSize);
+
+    if (!strokeStarted){ pushHistory(); strokeStarted = true; }
+
+    const isErase = (currentTool === "eraser") || isRight;
+    const color = isErase ? null : currentColor;
+
+    drawLineOnGrid(fromX, fromY, toX, toY, (x,y)=>{
+      if (!inBounds(x,y)) return;
+      pixels[y][x] = color ? color.slice() : null;
+    });
+
+    lastPos = { x: e.clientX, y: e.clientY };
+    render();
+  });
+
+  window.addEventListener("mouseup", ()=>{ isDrawing = false; lastPos = null; strokeStarted = false; });
+  stage.addEventListener("contextmenu", (e)=> e.preventDefault());
+
+  function paintAtEvent(e, isRight){
+    const pos = canvasToGrid(e.clientX, e.clientY);
+    if (!inBounds(pos.x,pos.y)) return;
+    if (!strokeStarted){ pushHistory(); strokeStarted = true; }
+
+    const isErase = (currentTool === "eraser") || isRight;
+    const color = isErase ? null : currentColor;
+    pixels[pos.y][pos.x] = color ? color.slice() : null;
+    render();
+  }
+
+  function equalPx(a,b){
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return a[0]===b[0] && a[1]===b[1] && a[2]===b[2] && a[3]===b[3];
+  }
+
+  function floodFill(sx, sy, newPx){
+    const target = pixels[sy][sx];
+    if (equalPx(target, newPx)) return;
+
+    const stack = [[sx,sy]];
+    const visited = new Uint8Array(gridW*gridH);
+
+    while(stack.length){
+      const p = stack.pop();
+      const x = p[0], y = p[1];
+      const idx = y*gridW + x;
+      if (visited[idx]) continue;
+      visited[idx] = 1;
+
+      if (!inBounds(x,y)) continue;
+      if (!equalPx(pixels[y][x], target)) continue;
+
+      pixels[y][x] = newPx ? newPx.slice() : null;
+
+      if (x>0) stack.push([x-1,y]);
+      if (x<gridW-1) stack.push([x+1,y]);
+      if (y>0) stack.push([x,y-1]);
+      if (y<gridH-1) stack.push([x,y+1]);
+    }
+  }
+
+  // ===== PNG保存 =====
+  saveBtn.addEventListener("click", ()=>{
+    const scale = clamp(parseInt(exportScaleInput.value,10)||1, 1, 64);
+    exportScaleInput.value = scale;
+
+    const out = document.createElement("canvas");
+    out.width = gridW * scale;
+    out.height = gridH * scale;
+    const octx = out.getContext("2d");
+    octx.imageSmoothingEnabled = false;
+
+    for(let y=0;y<gridH;y++){
+      for(let x=0;x<gridW;x++){
+        const p = pixels[y][x];
+        if (!p) continue;
+        octx.fillStyle = `rgba(${p[0]},${p[1]},${p[2]},${p[3]/255})`;
+        octx.fillRect(x*scale, y*scale, scale, scale);
+      }
+    }
+
+    const url = out.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pixel_${gridW}x${gridH}_x${scale}.png`;
+    document.body.appendChild(a);
+    a.click();
+    requestAnimationFrame(()=>a.remove());
+  });
+
+  // ===== 画像読み込み（縮小 + パレット変換） =====
+  loadBtn.addEventListener("click", ()=> fileInput.click());
+
+  fileInput.addEventListener("change", ()=>{
+    const file = fileInput.files && fileInput.files[0];
+    if (file) importImageFile(file);
+    fileInput.value = "";
+  });
+
+  // D&D
+  stage.addEventListener("dragover", (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  stage.addEventListener("drop", (e)=>{
+    e.preventDefault();
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) importImageFile(file);
+  });
+
+  async function importImageFile(file){
+    const mode = importMode.value; // palette / raw
+    const dith = ditherMode.value; // none / fs
+    const alphaTh = clamp(parseInt(alphaThresholdInput.value,10)||0, 0, 255);
+
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        pushHistory();
+
+        const off = document.createElement("canvas");
+        off.width = gridW;
+        off.height = gridH;
+        const octx = off.getContext("2d", { willReadFrequently: true });
+        octx.imageSmoothingEnabled = true; // 通常画像→縮小なので true の方が綺麗
+        octx.clearRect(0,0,gridW,gridH);
+        octx.drawImage(img, 0, 0, gridW, gridH);
+
+        const imgData = octx.getImageData(0,0,gridW,gridH);
+
+        if (mode === "raw"){
+          // raw: そのまま (透明のみ判定)
+          for(let y=0;y<gridH;y++){
+            for(let x=0;x<gridW;x++){
+              const i = (y*gridW + x)*4;
+              const r = imgData.data[i], g = imgData.data[i+1], b = imgData.data[i+2], a = imgData.data[i+3];
+              pixels[y][x] = (a < alphaTh) ? null : [r,g,b,a];
+            }
+          }
+          render();
+          return;
+        }
+
+        // palette: パレットへ量子化（任意でディザ）
+        const palRGBA = paletteHex.map(hexToRgba);
+
+        if (dith === "fs"){
+          pixels = quantizeWithFloydSteinberg(imgData, gridW, gridH, palRGBA, alphaTh);
+        }else{
+          pixels = quantizeNoDither(imgData, gridW, gridH, palRGBA, alphaTh);
+        }
+
+        render();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function nearestToPalette(rgba, palRGBA){
+    if (!rgba) return null;
+    let br=rgba[0], bg=rgba[1], bb=rgba[2];
+    let best=0, bestD=1e18;
+    for(let i=0;i<palRGBA.length;i++){
+      const p = palRGBA[i];
+      const dr=br-p[0], dg=bg-p[1], db=bb-p[2];
+      const d = dr*dr + dg*dg + db*db;
+      if (d < bestD){ bestD = d; best = i; }
+    }
+    return palRGBA[best].slice();
+  }
+
+  function quantizeNoDither(imgData, w, h, palRGBA, alphaTh){
+    const out = createPixels(w,h);
+    const d = imgData.data;
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const i = (y*w + x)*4;
+        const a = d[i+3];
+        if (a < alphaTh){ out[y][x] = null; continue; }
+        const rgba = [d[i], d[i+1], d[i+2], 255];
+        out[y][x] = nearestToPalette(rgba, palRGBA);
+      }
+    }
+    return out;
+  }
+
+  // Floyd-Steinberg error diffusion dithering
+  function quantizeWithFloydSteinberg(imgData, w, h, palRGBA, alphaTh){
+    const out = createPixels(w,h);
+
+    // 作業用に float バッファを作る
+    const buf = new Float32Array(w*h*4);
+    for(let i=0;i<buf.length;i++) buf[i] = imgData.data[i];
+
+    const idxAt = (x,y)=> (y*w + x)*4;
+
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const i = idxAt(x,y);
+        const a = buf[i+3];
+        if (a < alphaTh){
+          out[y][x] = null;
+          // 透明は誤差拡散しない
+          continue;
+        }
+
+        const oldR = buf[i], oldG = buf[i+1], oldB = buf[i+2];
+        const nearest = nearestToPalette([oldR, oldG, oldB, 255], palRGBA);
+        out[y][x] = nearest;
+
+        const errR = oldR - nearest[0];
+        const errG = oldG - nearest[1];
+        const errB = oldB - nearest[2];
+
+        // distribute errors
+        // (x+1,y)   7/16
+        // (x-1,y+1) 3/16
+        // (x,y+1)   5/16
+        // (x+1,y+1) 1/16
+        distribute(x+1,y,   7/16, errR, errG, errB);
+        distribute(x-1,y+1, 3/16, errR, errG, errB);
+        distribute(x,  y+1, 5/16, errR, errG, errB);
+        distribute(x+1,y+1, 1/16, errR, errG, errB);
+      }
+    }
+
+    function distribute(x,y,f,er,eg,eb){
+      if (x<0 || y<0 || x>=w || y>=h) return;
+      const j = idxAt(x,y);
+      // 透明は触らない方が自然なので、αが小さい場合はスキップ
+      if (buf[j+3] < alphaTh) return;
+      buf[j]   = clamp(buf[j]   + er*f, 0, 255);
+      buf[j+1] = clamp(buf[j+1] + eg*f, 0, 255);
+      buf[j+2] = clamp(buf[j+2] + eb*f, 0, 255);
+    }
+
+    return out;
+  }
+
+  // ===== キー操作 =====
+  window.addEventListener("keydown", (e)=>{
+    const k = e.key.toLowerCase();
+    if (k === "b"){ currentTool="pencil"; selectToolButton(toolPencil); }
+    if (k === "e"){ currentTool="eraser"; selectToolButton(toolEraser); }
+    if (k === "i"){ currentTool="eyedropper"; selectToolButton(toolEyedropper); }
+    if (k === "g"){ currentTool="bucket"; selectToolButton(toolBucket); }
+
+    if (e.ctrlKey && !e.shiftKey && k === "z"){ e.preventDefault(); undo(); }
+    if ((e.ctrlKey && k === "y") || (e.ctrlKey && e.shiftKey && k === "z")){
+      e.preventDefault(); redo();
+    }
+  });
+
+
+
+  // ===== モバイルUI（下部バー＋パレット引き出し）連携 =====
+  const mobileBar = document.getElementById('mobileBar');
+  const mbUndo = document.getElementById('mbUndo');
+  const mbRedo = document.getElementById('mbRedo');
+  const mbPencil = document.getElementById('mbPencil');
+  const mbEraser = document.getElementById('mbEraser');
+  const mbEye = document.getElementById('mbEye');
+  const mbBucket = document.getElementById('mbBucket');
+  const mbPalette = document.getElementById('mbPalette');
+
+  const paletteDrawer = document.getElementById('paletteDrawer');
+  const drawerClose = document.getElementById('drawerClose');
+  const drawerPalette = document.getElementById('drawerPalette');
+  const drawerPicker = document.getElementById('drawerPicker');
+  const drawerAdd = document.getElementById('drawerAdd');
+  const drawerAddCurrent = document.getElementById('drawerAddCurrent');
+  const drawerInfo = document.getElementById('drawerInfo');
+
+  function isMobileUI(){
+    return window.matchMedia && window.matchMedia('(max-width: 860px)').matches;
+  }
+
+  function syncMobileUI(){
+    // 表示自体はCSSが担当。ここでは引き出しの状態だけ整える。
+    if (!isMobileUI()) closeDrawer();
+    // ツール選択の同期
+    updateMobileToolSelection();
+  }
+
+  window.addEventListener('resize', syncMobileUI);
+  syncMobileUI();
+
+  function updateMobileToolSelection(){
+    if (!mbPencil) return;
+    [mbPencil, mbEraser, mbEye, mbBucket].forEach(b=>b.classList.remove('selected'));
+    if (currentTool === 'pencil') mbPencil.classList.add('selected');
+    if (currentTool === 'eraser') mbEraser.classList.add('selected');
+    if (currentTool === 'eyedropper') mbEye.classList.add('selected');
+    if (currentTool === 'bucket') mbBucket.classList.add('selected');
+  }
+
+  function setTool(tool){
+    currentTool = tool;
+    // PC側の表示も同期
+    if (tool === 'pencil') selectToolButton(toolPencil);
+    if (tool === 'eraser') selectToolButton(toolEraser);
+    if (tool === 'eyedropper') selectToolButton(toolEyedropper);
+    if (tool === 'bucket') selectToolButton(toolBucket);
+    updateMobileToolSelection();
+  }
+
+  // 下部バー操作
+  if (mbPencil){
+    mbPencil.addEventListener('click', ()=> setTool('pencil'));
+    mbEraser.addEventListener('click', ()=> setTool('eraser'));
+    mbEye.addEventListener('click', ()=> setTool('eyedropper'));
+    mbBucket.addEventListener('click', ()=> setTool('bucket'));
+    mbUndo.addEventListener('click', ()=> undo());
+    mbRedo.addEventListener('click', ()=> redo());
+    mbPalette.addEventListener('click', ()=> toggleDrawer());
+  }
+
+  function openDrawer(){
+    if (!paletteDrawer) return;
+    paletteDrawer.classList.add('open');
+    paletteDrawer.setAttribute('aria-hidden','false');
+    rebuildDrawerPalette();
+  }
+  function closeDrawer(){
+    if (!paletteDrawer) return;
+    paletteDrawer.classList.remove('open');
+    paletteDrawer.setAttribute('aria-hidden','true');
+  }
+  function toggleDrawer(){
+    if (!paletteDrawer) return;
+    if (paletteDrawer.classList.contains('open')) closeDrawer();
+    else openDrawer();
+  }
+  if (drawerClose) drawerClose.addEventListener('click', closeDrawer);
+
+  function rebuildDrawerPalette(){
+    if (!drawerPalette) return;
+    drawerPalette.innerHTML = '';
+    if (drawerInfo) drawerInfo.textContent = `色数: ${paletteHex.length}`;
+
+    // 透過
+    const t = document.createElement('button');
+    t.className = 'swatch transparent';
+    t.title = '透過';
+    t.addEventListener('click', ()=>{
+      currentColor = null;
+      setTool('pencil');
+      markDrawerSelection(TRANSPARENT);
+    });
+    drawerPalette.appendChild(t);
+
+    // 色
+    paletteHex.forEach((hex)=>{
+      const sw = document.createElement('button');
+      sw.className = 'swatch';
+      sw.style.backgroundColor = hex;
+      sw.title = hex;
+      sw.addEventListener('click', ()=>{
+        currentColor = hexToRgba(hex);
+        setTool('pencil');
+        markDrawerSelection(hex);
+      });
+
+      const del = document.createElement('span');
+      del.className = 'del';
+      del.textContent = '×';
+      del.title = 'この色を削除';
+      del.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        removeColor(hex);
+        rebuildDrawerPalette();
+      });
+      sw.appendChild(del);
+
+      drawerPalette.appendChild(sw);
+    });
+
+    // 現在色の選択表示
+    const curHex = rgbaToHex(currentColor);
+    markDrawerSelection(curHex);
+  }
+
+  function markDrawerSelection(hex){
+    if (!drawerPalette) return;
+    [...drawerPalette.querySelectorAll('.swatch')].forEach(s=>s.classList.remove('selected'));
+    // transparent
+    if (hex === TRANSPARENT){
+      const t = drawerPalette.querySelector('.swatch.transparent');
+      if (t) t.classList.add('selected');
+      return;
+    }
+    // colors
+    const target = [...drawerPalette.querySelectorAll('.swatch')].find(s=>s.title && s.title.toLowerCase() === (hex||'').toLowerCase());
+    if (target) target.classList.add('selected');
+  }
+
+  // Drawer: add color
+  if (drawerAdd){
+    drawerAdd.addEventListener('click', ()=>{
+      addColor(drawerPicker.value);
+      rebuildDrawerPalette();
+    });
+  }
+  if (drawerAddCurrent){
+    drawerAddCurrent.addEventListener('click', ()=>{
+      if (!currentColor){
+        alert('現在色が透過です。透過はパレットに追加できません。');
+        return;
+      }
+      addColor(rgbaToHex(currentColor));
+      rebuildDrawerPalette();
+    });
+  }
+
+  // buildPalette / updatePaletteInfo / selectToolButton をラップしてモバイルUIも同期
+  const _origBuildPalette = buildPalette;
+  buildPalette = function(){
+    _origBuildPalette();
+    rebuildDrawerPalette();
+  };
+  const _origUpdatePaletteInfo = updatePaletteInfo;
+  updatePaletteInfo = function(){
+    _origUpdatePaletteInfo();
+    if (drawerInfo) drawerInfo.textContent = `色数: ${paletteHex.length}`;
+  };
+  const _origSelectToolButton = selectToolButton;
+  selectToolButton = function(btn){
+    _origSelectToolButton(btn);
+    updateMobileToolSelection();
+  };
+
+  // 初回同期
+  rebuildDrawerPalette();
+  updateMobileToolSelection();
+
+})();
+</script>
+</body>
+</html>

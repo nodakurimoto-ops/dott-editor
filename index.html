@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ドット絵エディタ Pro（Refactor Stage2）</title>
+<style>
+:root{ --gap: 8px; --panel-bg:#f6f7f9; --border:#d0d7de; --accent:#2563eb; }
+body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN","Yu Gothic", Meiryo, sans-serif; color:#111; background:#fff; }
+header{ padding:12px 16px; border-bottom:1px solid var(--border); background:#fff; position:sticky; top:0; z-index:10; }
+h1{ font-size:18px; margin:0; }
+main{ display:grid; grid-template-columns: 360px 1fr; gap: var(--gap); padding: var(--gap); }
+@media (max-width: 980px){ main{ grid-template-columns: 1fr; } }
+.panel{ background: var(--panel-bg); border:1px solid var(--border); border-radius:10px; padding:12px; }
+.row{ display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+label{ font-size:12px; color:#444; }
+input[type=number]{ width:92px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; }
+input[type=text]{ width:100%; max-width: 420px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; }
+input[type=color]{ width:44px; height:34px; padding:0; border:1px solid var(--border); border-radius:8px; background:#fff; }
+select{ padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:#fff; }
+input[type=file]{ display:none; }
+button{ appearance:none; border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
+button:hover{ border-color:#aaa; }
+button.primary{ background: var(--accent); color:#fff; border-color: var(--accent); }
+button.primary:hover{ filter:brightness(0.95); }
+button.tool.selected, .swatch.selected{ outline:3px solid rgba(37,99,235,0.45); outline-offset:1px; }
+.palette{ display:flex; flex-wrap:wrap; gap:8px; }
+.swatch{ width:28px; height:28px; border-radius:6px; border:1px solid var(--border); cursor:pointer; position:relative; padding:0; }
+.swatch.transparent::before{ content:""; position:absolute; inset:0; background-image: conic-gradient(#ddd 25%, #bbb 0 50%, #ddd 0 75%, #bbb 0); background-size: 8px 8px; border-radius:6px; }
+.swatch .del{ position:absolute; top:-7px; right:-7px; width:16px; height:16px; border-radius:999px; background:#fff; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; line-height:1; color:#444; }
+.swatch .del:hover{ border-color:#999; }
+.tools{ display:flex; gap:8px; flex-wrap:wrap; }
+.canvas-wrap{ width: max-content; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff; }
+#stage{ display:block; image-rendering: pixelated; background-image: conic-gradient(#eee 25%, #ccc 0 50%, #eee 0 75%, #ccc 0); background-size: 16px 16px; touch-action: none; }
+.footer-row{ margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+small.hint{ color:#666; }
+.divider{ height:1px; background:var(--border); margin:12px 0; }
+.kbd{ font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#f3f4f6; border:1px solid #e5e7eb; padding:2px 6px; border-radius:4px; }
+.pill{ font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:#fff; }
+.warn{ color:#92400e; background:#fffbeb; border-color:#fde68a; }
+
+/* ===== モバイルUI（下部バー＋パレット引き出し） ===== */
+.mobile-bar{ display:none; }
+.drawer{ display:none; }
+@media (max-width: 860px){
+  main{ grid-template-columns: 1fr; padding-bottom: 92px; }
+  button{ min-height: 44px; }
+  .swatch{ width:40px; height:40px; }
+  .canvas-wrap{ margin:0 auto; }
+  .mobile-bar{ display:block; position: fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--border); z-index: 1000; padding:10px 10px calc(10px + env(safe-area-inset-bottom)); }
+  .mobile-row{ display:flex; gap:10px; align-items:center; justify-content:space-between; }
+  .mobile-row button{ flex:1; font-weight:700; border-radius:14px; }
+  .mobile-row .mini{ flex:0 0 auto; min-width:44px; }
+  .drawer{ position: fixed; left:10px; right:10px; bottom: 92px; max-height: 60vh; background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 999; display:none; overflow:auto; }
+  .drawer.open{ display:block; }
+  .drawer-header{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border); position: sticky; top: 0; background:#fff; }
+  .drawer-body{ padding:12px; }
+}
+</style>
+</head>
+<body>
+<header><h1>ドット絵エディタ Pro（Refactor Stage2）</h1></header>
+<main>
+  <section class="panel" id="controls">
+    <h2 style="font-size:14px;margin:4px 0 10px;">設定</h2>
+    <div class="row">
+      <label>横ドット数</label><input type="number" id="gridW" min="1" max="2048" value="32" />
+      <label>縦ドット数</label><input type="number" id="gridH" min="1" max="2048" value="32" />
+    </div>
+    <div class="row">
+      <label>表示倍率（セルサイズ px）</label>
+      <input type="number" id="cellSize" min="1" max="64" step="1" value="16" />
+      <button class="primary" id="apply" type="button">適用</button>
+      <button id="clear" type="button">クリア</button>
+    </div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">ツール</h2>
+    <div class="tools">
+      <button class="tool selected" id="toolPencil" title="B" type="button">鉛筆</button>
+      <button class="tool" id="toolEraser" title="E" type="button">消しゴム</button>
+      <button class="tool" id="toolEyedropper" title="I" type="button">スポイト</button>
+      <button class="tool" id="toolBucket" title="G" type="button">バケツ</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">レイヤー</h2>
+    <div class="row">
+      <label>レイヤー</label>
+      <select id="layerSelect" style="min-width:160px;"></select>
+      <button id="layerAddBtn" type="button">＋追加</button>
+      <button id="layerDeleteBtn" type="button">－削除</button>
+      <button id="layerDupBtn" type="button">複製</button>
+      <button id="layerUpBtn" type="button" title="上へ">↑</button>
+      <button id="layerDownBtn" type="button" title="下へ">↓</button>
+      <label style="display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="layerVisible" checked /> 表示
+      </label>
+    </div>
+    <div class="row" style="margin-top:-4px;">
+      <label>名前</label>
+      <input type="text" id="layerNameInput" placeholder="レイヤー名" style="max-width:180px;" />
+      <button id="layerRenameBtn" type="button">名前変更</button>
+    </div>
+    <small class="hint">※描画・バケツ・画像読み込みは「選択中レイヤー」に反映されます。</small>
+    <div class="row">
+      <button id="undoBtn" title="Ctrl+Z" type="button">アンドゥ</button>
+      <button id="redoBtn" title="Ctrl+Y / Ctrl+Shift+Z" type="button">リドゥ</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">パレット（透過あり）</h2>
+    <div class="row" style="justify-content:space-between;">
+      <div class="row" style="margin:0;">
+        <label>追加</label>
+        <input type="color" id="palettePicker" value="#ff0000" />
+        <button id="addColorBtn" type="button">色を追加</button>
+        <button id="addCurrentBtn" type="button" title="スポイトで取得した色など">現在色を追加</button>
+      </div>
+      <span id="paletteInfo" class="pill warn">色数: 16</span>
+    </div>
+
+    <div class="row" style="margin-top:6px;">
+      <label>プリセット</label>
+      <select id="palettePresetSelect">
+        <option value="builtin:default16" selected>デフォルト16色</option>
+        <option value="builtin:gray16">グレースケール16段階</option>
+      </select>
+      <button id="applyPresetBtn" type="button">適用</button>
+    </div>
+
+    <div class="row">
+      <label>保存名</label>
+      <input type="text" id="savePaletteName" placeholder="例: myPalette" style="max-width:180px;" />
+      <button id="savePaletteBtn" type="button">保存</button>
+      <label>保存済</label>
+      <select id="savedPaletteSelect" style="min-width:160px;"></select>
+      <button id="loadSavedPaletteBtn" type="button">呼び出し</button>
+      <button id="deleteSavedPaletteBtn" type="button">削除</button>
+    </div>
+    <small class="hint">※プリセット/保存はこのブラウザ（localStorage）に保存されます。</small>
+
+    <div class="palette" id="palette"></div>
+    <small class="hint">※各色の右上「×」で削除できます（透過は削除不可）。</small>
+
+    <div class="divider"></div>
+
+    <h2 style="font-size:14px;margin:12px 0 6px;">PNGの保存・読み込み</h2>
+    <div class="row">
+      <label>保存倍率</label>
+      <input type="number" id="exportScale" min="1" max="64" step="1" value="1" />
+      <button class="primary" id="savePNG" type="button">PNG保存</button>
+    </div>
+
+    <div class="row">
+      <input type="file" id="fileInput" accept="image/png,image/*" />
+      <button id="loadPNG" type="button">画像読み込み</button>
+      <label>変換</label>
+      <select id="importMode">
+        <option value="palette" selected>パレット変換して反映</option>
+        <option value="raw">そのまま縮小して反映（変換なし）</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>ディザ</label>
+      <select id="ditherMode">
+        <option value="none" selected>なし</option>
+        <option value="fs">Floyd-Steinberg</option>
+      </select>
+      <label>透過しきい値</label>
+      <input type="number" id="alphaThreshold" min="0" max="255" value="1" />
+      <small class="hint">※αがこの値未満は透明扱い</small>
+    </div>
+
+    <small class="hint">※キャンバスへドラッグ&ドロップでも読み込み可（画像→現在のドット数＋パレットへ変換）。</small>
+
+    <div class="divider"></div>
+
+    <small class="hint">
+      右ドラッグで消しゴム。<span class="kbd">Ctrl+Z</span> でアンドゥ、
+      <span class="kbd">Ctrl+Y</span> or <span class="kbd">Ctrl+Shift+Z</span> でリドゥ。<br>
+      キー: <span class="kbd">B</span>=鉛筆 <span class="kbd">E</span>=消し <span class="kbd">I</span>=スポイト <span class="kbd">G</span>=バケツ
+    </small>
+  </section>
+
+  <section>
+    <div class="canvas-wrap">
+      <canvas id="stage" width="512" height="512"></canvas>
+    </div>
+    <div class="footer-row">
+      <small class="hint">Stage2: Pointer Events統一・TypedArray化・高速レンダリング（ImageData合成）。</small>
+    </div>
+  </section>
+</main>
+
+<!-- ===== スマホ用：下部ツールバー（PCでは非表示） ===== -->
+<div class="mobile-bar" id="mobileBar">
+  <div class="mobile-row">
+    <button class="mini" id="mbUndo" type="button" title="Undo">↶</button>
+    <button id="mbPencil" type="button">鉛筆</button>
+    <button id="mbEraser" type="button">消し</button>
+    <button id="mbEye" type="button">スポ</button>
+    <button id="mbBucket" type="button">塗</button>
+    <button class="mini" id="mbPalette" type="button" title="Palette">🎨</button>
+    <button class="mini" id="mbRedo" type="button" title="Redo">↷</button>
+  </div>
+</div>
+
+<!-- ===== スマホ用：パレット引き出し（PCでは非表示） ===== -->
+<div class="drawer" id="paletteDrawer" aria-hidden="true">
+  <div class="drawer-header">
+    <strong style="font-size:13px;">パレット</strong>
+    <button id="drawerClose" type="button">閉じる</button>
+  </div>
+  <div class="drawer-body">
+    <div class="palette" id="drawerPalette"></div>
+    <div class="divider"></div>
+
+    <div class="row" style="margin-bottom:0;">
+      <label>追加</label>
+      <input type="color" id="drawerPicker" value="#ff0000" />
+      <button id="drawerAdd" type="button">追加</button>
+      <button id="drawerAddCurrent" type="button">現在色</button>
+      <span id="drawerInfo" class="pill warn">色数: 16</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row" style="margin-bottom:0;">
+      <label>プリセット</label>
+      <select id="drawerPresetSelect">
+        <option value="builtin:default16" selected>デフォルト16</option>
+        <option value="builtin:gray16">グレー16</option>
+      </select>
+      <button id="drawerPresetApply" type="button">適用</button>
+    </div>
+
+    <div class="row" style="margin-bottom:0;">
+      <label>保存名</label>
+      <input type="text" id="drawerSaveName" placeholder="name" style="max-width:140px;" />
+      <button id="drawerSaveBtn" type="button">保存</button>
+    </div>
+
+    <div class="row" style="margin-bottom:0;">
+      <label>保存済</label>
+      <select id="drawerSavedSelect" style="min-width:140px;"></select>
+      <button id="drawerLoadSavedBtn" type="button">呼出</button>
+      <button id="drawerDeleteSavedBtn" type="button">削除</button>
+    </div>
+
+    <small class="hint">※保存はこのブラウザ内</small>
+  </div>
+</div>
+
+<script type="module">
+(() => {
+  'use strict';
+
+  // =========================================================
+  // 0. 定数 / プリセット
+  // =========================================================
+  const TRANSPARENT = 'transparent';
+  const HISTORY_LIMIT = 200; // 大きめに（TypedArray+差分で軽くする）
+  const LS_KEY = 'pixelEditor.savedPalettes.v1';
+
+  const PRESET_DEFAULT16 = [
+    '#000000','#ffffff','#c0c0c0','#808080',
+    '#ff0000','#00ff00','#0000ff','#ffff00',
+    '#00ffff','#ff00ff','#8b4513','#ffa500',
+    '#800000','#008080','#800080','#008000'
+  ];
+  const PRESET_GRAY16 = (() => {
+    const arr = [];
+    const hh = (n) => n.toString(16).padStart(2,'0');
+    for (let i=0;i<16;i++){
+      const v = Math.round(i*255/15);
+      arr.push('#'+hh(v)+hh(v)+hh(v));
+    }
+    return arr;
+  })();
+
+  // =========================================================
+  // 1. DOM参照
+  // =========================================================
+  const ui = {
+    stage: document.getElementById('stage'),
+    ctx: null,
+
+    gridW: document.getElementById('gridW'),
+    gridH: document.getElementById('gridH'),
+    cellSize: document.getElementById('cellSize'),
+    apply: document.getElementById('apply'),
+    clear: document.getElementById('clear'),
+
+    toolPencil: document.getElementById('toolPencil'),
+    toolEraser: document.getElementById('toolEraser'),
+    toolEyedropper: document.getElementById('toolEyedropper'),
+    toolBucket: document.getElementById('toolBucket'),
+
+    undoBtn: document.getElementById('undoBtn'),
+    redoBtn: document.getElementById('redoBtn'),
+
+    layerSelect: document.getElementById('layerSelect'),
+    layerAddBtn: document.getElementById('layerAddBtn'),
+    layerDeleteBtn: document.getElementById('layerDeleteBtn'),
+    layerDupBtn: document.getElementById('layerDupBtn'),
+    layerUpBtn: document.getElementById('layerUpBtn'),
+    layerDownBtn: document.getElementById('layerDownBtn'),
+    layerVisible: document.getElementById('layerVisible'),
+    layerNameInput: document.getElementById('layerNameInput'),
+    layerRenameBtn: document.getElementById('layerRenameBtn'),
+
+    paletteBox: document.getElementById('palette'),
+    palettePicker: document.getElementById('palettePicker'),
+    addColorBtn: document.getElementById('addColorBtn'),
+    addCurrentBtn: document.getElementById('addCurrentBtn'),
+    paletteInfo: document.getElementById('paletteInfo'),
+    palettePresetSelect: document.getElementById('palettePresetSelect'),
+    applyPresetBtn: document.getElementById('applyPresetBtn'),
+    savePaletteName: document.getElementById('savePaletteName'),
+    savePaletteBtn: document.getElementById('savePaletteBtn'),
+    savedPaletteSelect: document.getElementById('savedPaletteSelect'),
+    loadSavedPaletteBtn: document.getElementById('loadSavedPaletteBtn'),
+    deleteSavedPaletteBtn: document.getElementById('deleteSavedPaletteBtn'),
+
+    exportScale: document.getElementById('exportScale'),
+    savePNG: document.getElementById('savePNG'),
+
+    fileInput: document.getElementById('fileInput'),
+    loadPNG: document.getElementById('loadPNG'),
+    importMode: document.getElementById('importMode'),
+    ditherMode: document.getElementById('ditherMode'),
+    alphaThreshold: document.getElementById('alphaThreshold'),
+
+    // mobile
+    mbUndo: document.getElementById('mbUndo'),
+    mbRedo: document.getElementById('mbRedo'),
+    mbPencil: document.getElementById('mbPencil'),
+    mbEraser: document.getElementById('mbEraser'),
+    mbEye: document.getElementById('mbEye'),
+    mbBucket: document.getElementById('mbBucket'),
+    mbPalette: document.getElementById('mbPalette'),
+
+    paletteDrawer: document.getElementById('paletteDrawer'),
+    drawerClose: document.getElementById('drawerClose'),
+    drawerPalette: document.getElementById('drawerPalette'),
+    drawerPicker: document.getElementById('drawerPicker'),
+    drawerAdd: document.getElementById('drawerAdd'),
+    drawerAddCurrent: document.getElementById('drawerAddCurrent'),
+    drawerInfo: document.getElementById('drawerInfo'),
+    drawerPresetSelect: document.getElementById('drawerPresetSelect'),
+    drawerPresetApply: document.getElementById('drawerPresetApply'),
+    drawerSaveName: document.getElementById('drawerSaveName'),
+    drawerSaveBtn: document.getElementById('drawerSaveBtn'),
+    drawerSavedSelect: document.getElementById('drawerSavedSelect'),
+    drawerLoadSavedBtn: document.getElementById('drawerLoadSavedBtn'),
+    drawerDeleteSavedBtn: document.getElementById('drawerDeleteSavedBtn'),
+  };
+  ui.ctx = ui.stage.getContext('2d');
+
+  // =========================================================
+  // 2. Utility
+  // =========================================================
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  function normalizeHex(hex){
+    if (!hex) return null;
+    let h = String(hex).trim().toLowerCase();
+    if (!h.startsWith('#')) h = '#'+h;
+    if (h.length === 4){
+      h = '#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];
+    }
+    if (!/^#[0-9a-f]{6}$/.test(h)) return null;
+    return h;
+  }
+
+  // ---- Typed pixel format ----
+  // store as uint32 = 0xAABBGGRR (ABGR) so that little-endian memory maps to RGBA bytes
+  const TRANSPARENT_U32 = 0;
+  const packABGR = (r,g,b,a=255) => ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+  const u32ToRGBA = (u) => [u & 255, (u >> 8) & 255, (u >> 16) & 255, (u >> 24) & 255];
+  const u32ToHex = (u) => {
+    if (!u) return TRANSPARENT;
+    const r = u & 255, g = (u>>8)&255, b = (u>>16)&255;
+    const hh = (n)=>n.toString(16).padStart(2,'0');
+    return '#'+hh(r)+hh(g)+hh(b);
+  };
+  const hexToU32 = (hex) => {
+    if (hex === TRANSPARENT || hex == null) return 0;
+    const h = normalizeHex(hex);
+    if (!h) return 0;
+    const v = h.slice(1);
+    const r = parseInt(v.slice(0,2),16);
+    const g = parseInt(v.slice(2,4),16);
+    const b = parseInt(v.slice(4,6),16);
+    return packABGR(r,g,b,255);
+  };
+
+  function canvasToGrid(s, clientX, clientY){
+    const rect = ui.stage.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left) / s.grid.cellSize);
+    const y = Math.floor((clientY - rect.top) / s.grid.cellSize);
+    return {x,y};
+  }
+
+  function inBounds(s, x,y){
+    return x>=0 && y>=0 && x<s.grid.w && y<s.grid.h;
+  }
+
+  function drawLineOnGrid(x0,y0,x1,y1, plotter){
+    let dx = Math.abs(x1-x0), sx = x0 < x1 ? 1 : -1;
+    let dy = -Math.abs(y1-y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    while (true){
+      plotter(x0,y0);
+      if (x0===x1 && y0===y1) break;
+      const e2 = 2*err;
+      if (e2 >= dy){ err += dy; x0 += sx; }
+      if (e2 <= dx){ err += dx; y0 += sy; }
+    }
+  }
+
+  const isLittleEndian = (() => {
+    const b = new ArrayBuffer(4);
+    new DataView(b).setUint32(0, 0x0a0b0c0d, true);
+    return new Uint8Array(b)[0] === 0x0d;
+  })();
+
+  // =========================================================
+  // 3. State
+  // =========================================================
+  function createPixelsU32(w,h){
+    return new Uint32Array(w*h); // 0 = transparent
+  }
+
+  function deepCopyPixelsU32(px){
+    return px.slice();
+  }
+
+  function deepCopyLayers(layers){
+    return layers.map(l => ({
+      id: l.id,
+      name: l.name,
+      visible: !!l.visible,
+      pixels: deepCopyPixelsU32(l.pixels)
+    }));
+  }
+
+  function createLayer(s, name){
+    const id = s.layers.nextId++;
+    return { id, name: name || ('レイヤー'+id), visible: true, pixels: createPixelsU32(s.grid.w, s.grid.h) };
+  }
+
+  function createInitialState(){
+    const w = clamp(parseInt(ui.gridW.value,10) || 32, 1, 2048);
+    const h = clamp(parseInt(ui.gridH.value,10) || 32, 1, 2048);
+    const cell = clamp(parseInt(ui.cellSize.value,10) || 16, 1, 64);
+
+    const s = {
+      grid: { w, h, cellSize: cell },
+      palette: { hex: PRESET_DEFAULT16.slice() },
+      layers: { list: [], active: 0, nextId: 1 },
+      tool: { kind: 'pencil', color: hexToU32(PRESET_DEFAULT16[0]) }, // uint32, 0=透明
+      settings: {
+        exportScale: clamp(parseInt(ui.exportScale.value,10) || 1, 1, 64),
+        importMode: ui.importMode.value || 'palette',
+        dither: ui.ditherMode.value || 'none',
+        alphaTh: clamp(parseInt(ui.alphaThreshold.value,10) || 1, 0, 255)
+      },
+      ui: {
+        drawing: { active:false, pointerId:null, stroke:null },
+      }
+    };
+
+    s.layers.list = [createLayer(s, 'レイヤー1')];
+    s.layers.active = 0;
+    return s;
+  }
+
+  const state = createInitialState();
+
+  const getActiveLayer = (s) => s.layers.list[s.layers.active];
+  const idxOf = (s, x,y) => y*s.grid.w + x;
+
+  function topVisiblePixelAt(s, x,y){
+    const idx = idxOf(s,x,y);
+    for (let i=s.layers.list.length-1;i>=0;i--){
+      const layer = s.layers.list[i];
+      if (!layer.visible) continue;
+      const p = layer.pixels[idx];
+      if (p) return p;
+    }
+    return 0;
+  }
+
+  // =========================================================
+  // 4. History (hybrid: snapshot + patch)
+  // =========================================================
+  function snapshotOf(s){
+    return {
+      kind: 'snapshot',
+      grid: { w: s.grid.w, h: s.grid.h, cellSize: s.grid.cellSize },
+      paletteHex: s.palette.hex.slice(),
+      layers: deepCopyLayers(s.layers.list),
+      activeLayer: s.layers.active,
+      nextLayerId: s.layers.nextId,
+      tool: { kind: s.tool.kind, color: s.tool.color >>> 0 },
+      settings: { ...s.settings }
+    };
+  }
+
+  function restoreInto(s, snap){
+    s.grid.w = snap.grid.w; s.grid.h = snap.grid.h; s.grid.cellSize = snap.grid.cellSize;
+    s.palette.hex = (snap.paletteHex || []).slice();
+    s.layers.list = deepCopyLayers(snap.layers || []);
+    if (!s.layers.list.length){
+      s.layers.nextId = 1;
+      s.layers.list = [createLayer(s, 'レイヤー1')];
+      s.layers.active = 0;
+    } else {
+      s.layers.active = clamp(parseInt(snap.activeLayer,10) || 0, 0, s.layers.list.length-1);
+      s.layers.nextId = snap.nextLayerId || (Math.max(...s.layers.list.map(l=>l.id)) + 1);
+    }
+    s.tool.kind = snap.tool?.kind || 'pencil';
+    s.tool.color = (snap.tool?.color >>> 0) || 0;
+    s.settings = { ...s.settings, ...(snap.settings || {}) };
+
+    // currentColor がパレット外なら先頭へ（透明の場合はOK）
+    if (s.tool.color){
+      const hex = u32ToHex(s.tool.color);
+      if (!s.palette.hex.includes(hex)) s.tool.color = hexToU32(s.palette.hex[0]);
+    }
+
+    s.ui.drawing.active = false;
+    s.ui.drawing.pointerId = null;
+    s.ui.drawing.stroke = null;
+  }
+
+  function patchEntry(layerIndex, indices, before, after){
+    return { kind:'patch', layerIndex, indices, before, after };
+  }
+
+  class History {
+    constructor(limit){
+      this.limit = limit;
+      this.undoStack = [];
+      this.redoStack = [];
+    }
+    push(entry){
+      this.undoStack.push(entry);
+      if (this.undoStack.length > this.limit) this.undoStack.shift();
+      this.redoStack = [];
+    }
+    undo(){
+      if (!this.undoStack.length) return null;
+      const e = this.undoStack.pop();
+      this.redoStack.push(e);
+      return e;
+    }
+    redo(){
+      if (!this.redoStack.length) return null;
+      const e = this.redoStack.pop();
+      this.undoStack.push(e);
+      return e;
+    }
+    applyUndo(s, entry){
+      if (!entry) return;
+      if (entry.kind === 'snapshot'){
+        restoreInto(s, entry);
+        return;
+      }
+      if (entry.kind === 'patch'){
+        const layer = s.layers.list[entry.layerIndex];
+        if (!layer) return;
+        const px = layer.pixels;
+        const idx = entry.indices;
+        const before = entry.before;
+        for (let i=0;i<idx.length;i++) px[idx[i]] = before[i];
+        return;
+      }
+    }
+    applyRedo(s, entry){
+      if (!entry) return;
+      if (entry.kind === 'snapshot'){
+        restoreInto(s, entry);
+        return;
+      }
+      if (entry.kind === 'patch'){
+        const layer = s.layers.list[entry.layerIndex];
+        if (!layer) return;
+        const px = layer.pixels;
+        const idx = entry.indices;
+        const after = entry.after;
+        for (let i=0;i<idx.length;i++) px[idx[i]] = after[i];
+        return;
+      }
+    }
+  }
+
+  const history = new History(HISTORY_LIMIT);
+
+  // =========================================================
+  // 5. Renderer (fast composite)
+  // =========================================================
+  const buffer = {
+    canvas: document.createElement('canvas'),
+    ctx: null,
+    imageData: null,
+    rgbaU32View: null,
+    compositeU32: null,
+    lastW: 0,
+    lastH: 0,
+  };
+  buffer.ctx = buffer.canvas.getContext('2d', { willReadFrequently: true });
+
+  function ensureBuffers(s){
+    const w = s.grid.w, h = s.grid.h;
+    if (buffer.lastW === w && buffer.lastH === h && buffer.imageData) return;
+    buffer.lastW = w; buffer.lastH = h;
+    buffer.canvas.width = w;
+    buffer.canvas.height = h;
+    buffer.imageData = buffer.ctx.createImageData(w, h);
+    buffer.rgbaU32View = new Uint32Array(buffer.imageData.data.buffer);
+    buffer.compositeU32 = new Uint32Array(w*h);
+  }
+
+  function setupCanvasFromState(s){
+    ui.stage.width = s.grid.w * s.grid.cellSize;
+    ui.stage.height = s.grid.h * s.grid.cellSize;
+    ui.stage.style.backgroundSize = String(s.grid.cellSize) + 'px ' + String(s.grid.cellSize) + 'px';
+    ui.ctx.imageSmoothingEnabled = false;
+  }
+
+  function drawGridLines(s){
+    // 大解像度だと線描画が重いので、セルサイズが小さい場合は省略
+    if (s.grid.cellSize <= 2) return;
+    const ctx = ui.ctx;
+    const stroke = 'rgba(0,0,0,0.06)';
+    ctx.save();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x=0;x<=s.grid.w;x++){
+      ctx.moveTo(x*s.grid.cellSize+0.5, 0);
+      ctx.lineTo(x*s.grid.cellSize+0.5, s.grid.h*s.grid.cellSize);
+    }
+    for (let y=0;y<=s.grid.h;y++){
+      ctx.moveTo(0, y*s.grid.cellSize+0.5);
+      ctx.lineTo(s.grid.w*s.grid.cellSize, y*s.grid.cellSize+0.5);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function compositeLayers(s){
+    ensureBuffers(s);
+    const comp = buffer.compositeU32;
+    comp.fill(0);
+    // bottom -> top, overwrite if non-transparent
+    for (let li=0; li<s.layers.list.length; li++){
+      const layer = s.layers.list[li];
+      if (!layer.visible) continue;
+      const px = layer.pixels;
+      for (let i=0;i<px.length;i++){
+        const v = px[i];
+        if (v) comp[i] = v;
+      }
+    }
+  }
+
+  function render(s){
+    compositeLayers(s);
+
+    // write to imagedata
+    // NOTE: expects ABGR stored; on little-endian, ABGR u32 maps to RGBA bytes
+    // on big-endian, fallback to byte writes.
+    if (isLittleEndian){
+      buffer.rgbaU32View.set(buffer.compositeU32);
+    } else {
+      const d = buffer.imageData.data;
+      const comp = buffer.compositeU32;
+      for (let i=0;i<comp.length;i++){
+        const u = comp[i];
+        const r = u & 255, g = (u>>8)&255, b=(u>>16)&255, a=(u>>24)&255;
+        const j = i*4;
+        d[j]=r; d[j+1]=g; d[j+2]=b; d[j+3]=a;
+      }
+    }
+    buffer.ctx.putImageData(buffer.imageData, 0, 0);
+
+    const ctx = ui.ctx;
+    ctx.clearRect(0,0,ui.stage.width, ui.stage.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(buffer.canvas, 0, 0, s.grid.w*s.grid.cellSize, s.grid.h*s.grid.cellSize);
+    drawGridLines(s);
+  }
+
+  // =========================================================
+  // 6. Palette rendering (PC + Drawer 共通)
+  // =========================================================
+  function updatePaletteInfo(s){
+    const count = s.palette.hex.length;
+    ui.paletteInfo.textContent = '色数: ' + count;
+    ui.paletteInfo.className = 'pill' + (count !== 16 ? ' warn' : '');
+    if (ui.drawerInfo) ui.drawerInfo.textContent = '色数: ' + count;
+  }
+
+  function renderPalette(rootEl, s, opts){
+    if (!rootEl) return;
+    const { selectedHex, onPick, onDelete } = opts;
+    rootEl.innerHTML = '';
+
+    const t = document.createElement('button');
+    t.className = 'swatch transparent' + (selectedHex === TRANSPARENT ? ' selected' : '');
+    t.title = '透過';
+    t.addEventListener('click', () => onPick(TRANSPARENT));
+    rootEl.appendChild(t);
+
+    for (const hex of s.palette.hex){
+      const sw = document.createElement('button');
+      sw.className = 'swatch' + (hex.toLowerCase() === String(selectedHex).toLowerCase() ? ' selected' : '');
+      sw.style.backgroundColor = hex;
+      sw.title = hex;
+      sw.addEventListener('click', () => onPick(hex));
+
+      const del = document.createElement('span');
+      del.className = 'del';
+      del.textContent = '×';
+      del.title = 'この色を削除';
+      del.addEventListener('click', (e) => { e.stopPropagation(); onDelete(hex); });
+      sw.appendChild(del);
+
+      rootEl.appendChild(sw);
+    }
+  }
+
+  function syncPaletteSelection(){
+    const curHex = u32ToHex(state.tool.color);
+    renderPalette(ui.paletteBox, state, {
+      selectedHex: curHex,
+      onPick: (hex) => dispatch({ type:'SET_COLOR', hex, alsoSetTool:'pencil', undoable:false }),
+      onDelete: (hex) => dispatch({ type:'REMOVE_COLOR', hex, undoable:true, historyMode:'snapshot' }),
+    });
+    renderPalette(ui.drawerPalette, state, {
+      selectedHex: curHex,
+      onPick: (hex) => dispatch({ type:'SET_COLOR', hex, alsoSetTool:'pencil', undoable:false }),
+      onDelete: (hex) => dispatch({ type:'REMOVE_COLOR', hex, undoable:true, historyMode:'snapshot' }),
+    });
+    updatePaletteInfo(state);
+  }
+
+  // =========================================================
+  // 7. Storage / Saved palettes
+  // =========================================================
+  function loadSavedPalettes(){
+    try{
+      const raw = localStorage.getItem(LS_KEY);
+      return raw ? (JSON.parse(raw) || {}) : {};
+    }catch(_){
+      return {};
+    }
+  }
+  function saveSavedPalettes(obj){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(obj)); }catch(_){ }
+  }
+
+  function refreshSavedPaletteSelects(){
+    const saved = loadSavedPalettes();
+    const names = Object.keys(saved).sort((a,b)=>a.localeCompare(b));
+    const fill = (sel) => {
+      if (!sel) return;
+      sel.innerHTML = '';
+      const o0 = document.createElement('option');
+      o0.value = '';
+      o0.textContent = names.length ? '（選択）' : '（なし）';
+      sel.appendChild(o0);
+      for (const n of names){
+        const o = document.createElement('option');
+        o.value = n;
+        o.textContent = n;
+        sel.appendChild(o);
+      }
+    };
+    fill(ui.savedPaletteSelect);
+    fill(ui.drawerSavedSelect);
+  }
+
+  // =========================================================
+  // 8. Actions / Reducer / Dispatch
+  // =========================================================
+  function dispatch(action){
+    const undoable = action.undoable !== false;
+
+    // history boundary
+    if (undoable && action.historyEntry){
+      history.push(action.historyEntry);
+    } else if (undoable) {
+      history.push(snapshotOf(state));
+    }
+
+    reduce(state, action);
+
+    // UI反映 & 再描画
+    syncInputsFromState(state);
+    updateLayerUI(state);
+    syncPaletteSelection();
+    updateToolUI(state);
+    setupCanvasFromState(state);
+    render(state);
+
+    if (!isMobileUI()) closeDrawer();
+  }
+
+  function reduce(s, a){
+    switch (a.type){
+      case 'SET_TOOL':
+        s.tool.kind = a.tool;
+        return;
+      case 'SET_COLOR':
+        s.tool.color = (a.hex === TRANSPARENT) ? 0 : hexToU32(a.hex);
+        if (a.alsoSetTool) s.tool.kind = a.alsoSetTool;
+        return;
+      case 'ADD_COLOR': {
+        const h = normalizeHex(a.hex);
+        if (!h) { alert('不正な色です。'); return; }
+        if (s.palette.hex.includes(h)) { alert('すでにパレットにあります。'); return; }
+        s.palette.hex.push(h);
+        return;
+      }
+      case 'REMOVE_COLOR': {
+        const hex = a.hex;
+        if (s.palette.hex.length <= 1) { alert('色は最低1色必要です。'); return; }
+        s.palette.hex = s.palette.hex.filter(h => h !== hex);
+        const pal = buildPaletteRGB(s.palette.hex);
+        for (const layer of s.layers.list){
+          const px = layer.pixels;
+          const removeU = hexToU32(hex);
+          for (let i=0;i<px.length;i++){
+            if (px[i] === removeU) px[i] = nearestToPaletteU32(px[i], pal);
+          }
+        }
+        if (u32ToHex(s.tool.color) === hex) s.tool.color = hexToU32(s.palette.hex[0]);
+        return;
+      }
+      case 'APPLY_PALETTE_SET': {
+        applyPaletteSet(s, a.palette);
+        return;
+      }
+      case 'RESIZE_GRID': {
+        const newW = clamp(a.w, 1, 2048);
+        const newH = clamp(a.h, 1, 2048);
+        const newCell = clamp(a.cellSize, 1, 64);
+        const oldW = s.grid.w, oldH = s.grid.h;
+        s.grid.w = newW; s.grid.h = newH; s.grid.cellSize = newCell;
+        if (oldW !== newW || oldH !== newH){
+          for (const layer of s.layers.list){
+            const old = layer.pixels;
+            const np = createPixelsU32(newW, newH);
+            const copyW = Math.min(oldW, newW);
+            const copyH = Math.min(oldH, newH);
+            for (let y=0;y<copyH;y++){
+              const oldRow = y*oldW;
+              const newRow = y*newW;
+              for (let x=0;x<copyW;x++) np[newRow + x] = old[oldRow + x];
+            }
+            layer.pixels = np;
+          }
+        }
+        return;
+      }
+      case 'CLEAR_LAYER':
+        getActiveLayer(s).pixels = createPixelsU32(s.grid.w, s.grid.h);
+        return;
+      case 'SET_ACTIVE_LAYER':
+        s.layers.active = clamp(parseInt(a.index,10) || 0, 0, s.layers.list.length-1);
+        return;
+      case 'SET_LAYER_VISIBLE':
+        getActiveLayer(s).visible = !!a.visible;
+        return;
+      case 'RENAME_LAYER': {
+        const name = String(a.name || '').trim();
+        if (!name){ alert('レイヤー名を入力してください。'); return; }
+        getActiveLayer(s).name = name;
+        return;
+      }
+      case 'ADD_LAYER':
+        s.layers.list.push(createLayer(s, a.name));
+        s.layers.active = s.layers.list.length - 1;
+        return;
+      case 'DELETE_LAYER':
+        if (s.layers.list.length <= 1){ alert('レイヤーは最低1枚必要です。'); return; }
+        s.layers.list.splice(s.layers.active, 1);
+        s.layers.active = Math.min(s.layers.active, s.layers.list.length-1);
+        return;
+      case 'DUP_LAYER': {
+        const src = getActiveLayer(s);
+        const dup = {
+          id: s.layers.nextId++,
+          name: (src.name || ('レイヤー'+src.id)) + '_copy',
+          visible: src.visible,
+          pixels: deepCopyPixelsU32(src.pixels)
+        };
+        s.layers.list.splice(s.layers.active+1, 0, dup);
+        s.layers.active = s.layers.active + 1;
+        return;
+      }
+      case 'MOVE_LAYER': {
+        const from = s.layers.active;
+        const to = a.to;
+        if (to < 0 || to >= s.layers.list.length) return;
+        const item = s.layers.list.splice(from,1)[0];
+        s.layers.list.splice(to,0,item);
+        s.layers.active = to;
+        return;
+      }
+      case 'SET_ACTIVE_PIXELS':
+        getActiveLayer(s).pixels = a.pixels;
+        return;
+      default:
+        return;
+    }
+  }
+
+  // =========================================================
+  // 9. Palette quantize helpers (u32)
+  // =========================================================
+  function buildPaletteRGB(hexList){
+    const arr = [];
+    for (const h of hexList){
+      const u = hexToU32(h);
+      const r = u & 255, g=(u>>8)&255, b=(u>>16)&255;
+      arr.push({r,g,b,u});
+    }
+    return arr;
+  }
+
+  function nearestToPaletteU32(u, pal){
+    if (!u) return 0;
+    const r = u & 255, g=(u>>8)&255, b=(u>>16)&255;
+    let best = 0, bestD = 1e18;
+    for (let i=0;i<pal.length;i++){
+      const p = pal[i];
+      const dr = r-p.r, dg = g-p.g, db = b-p.b;
+      const d = dr*dr + dg*dg + db*db;
+      if (d < bestD){ bestD = d; best = i; }
+    }
+    return pal[best].u >>> 0;
+  }
+
+  function getPreset(val){
+    if (val === 'builtin:default16') return PRESET_DEFAULT16.slice();
+    if (val === 'builtin:gray16') return PRESET_GRAY16.slice();
+    return null;
+  }
+
+  function applyPaletteSet(s, arr){
+    const newPalette = [];
+    const seen = new Set();
+    for (const h of arr){
+      const nh = normalizeHex(h);
+      if (!nh || seen.has(nh)) continue;
+      seen.add(nh);
+      newPalette.push(nh);
+    }
+    if (!newPalette.length){ alert('パレットが空です。'); return; }
+
+    s.palette.hex = newPalette;
+    const pal = buildPaletteRGB(s.palette.hex);
+    for (const layer of s.layers.list){
+      const px = layer.pixels;
+      for (let i=0;i<px.length;i++){
+        if (px[i]) px[i] = nearestToPaletteU32(px[i], pal);
+      }
+    }
+
+    // tool color
+    if (s.tool.color){
+      const hex = u32ToHex(s.tool.color);
+      if (!s.palette.hex.includes(hex)) s.tool.color = hexToU32(s.palette.hex[0]);
+    }
+
+    refreshSavedPaletteSelects();
+  }
+
+  function saveCurrentPaletteAs(name){
+    name = String(name || '').trim();
+    if (!name){ alert('保存名を入力してください。'); return; }
+    const saved = loadSavedPalettes();
+    saved[name] = state.palette.hex.slice();
+    saveSavedPalettes(saved);
+    refreshSavedPaletteSelects();
+  }
+
+  function deleteSavedPalette(name){
+    if (!name) return;
+    const saved = loadSavedPalettes();
+    if (!saved[name]) return;
+    if (!confirm('保存済みパレット「'+name+'」を削除しますか？')) return;
+    delete saved[name];
+    saveSavedPalettes(saved);
+    refreshSavedPaletteSelects();
+  }
+
+  function loadSavedPalette(name){
+    const saved = loadSavedPalettes();
+    const arr = saved[name];
+    if (!arr){ alert('保存済みパレットが見つかりません。'); return; }
+    dispatch({ type:'APPLY_PALETTE_SET', palette: arr, undoable:true, historyMode:'snapshot' });
+  }
+
+  // =========================================================
+  // 10. UI sync
+  // =========================================================
+  function syncInputsFromState(s){
+    ui.gridW.value = s.grid.w;
+    ui.gridH.value = s.grid.h;
+    ui.cellSize.value = s.grid.cellSize;
+    ui.exportScale.value = s.settings.exportScale;
+    ui.importMode.value = s.settings.importMode;
+    ui.ditherMode.value = s.settings.dither;
+    ui.alphaThreshold.value = s.settings.alphaTh;
+  }
+
+  function updateLayerUI(s){
+    ui.layerSelect.innerHTML = '';
+    for (let i=0;i<s.layers.list.length;i++){
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = s.layers.list[i].name;
+      ui.layerSelect.appendChild(opt);
+    }
+    ui.layerSelect.value = String(s.layers.active);
+    ui.layerVisible.checked = !!getActiveLayer(s).visible;
+    ui.layerNameInput.value = getActiveLayer(s).name || '';
+    ui.layerUpBtn.disabled = (s.layers.active === 0);
+    ui.layerDownBtn.disabled = (s.layers.active === s.layers.list.length-1);
+  }
+
+  function updateToolUI(s){
+    const buttons = [ui.toolPencil, ui.toolEraser, ui.toolEyedropper, ui.toolBucket];
+    buttons.forEach(b => b.classList.remove('selected'));
+    if (s.tool.kind === 'pencil') ui.toolPencil.classList.add('selected');
+    if (s.tool.kind === 'eraser') ui.toolEraser.classList.add('selected');
+    if (s.tool.kind === 'eyedropper') ui.toolEyedropper.classList.add('selected');
+    if (s.tool.kind === 'bucket') ui.toolBucket.classList.add('selected');
+
+    const mbs = [ui.mbPencil, ui.mbEraser, ui.mbEye, ui.mbBucket];
+    mbs.forEach(b => b && b.classList.remove('selected'));
+    if (s.tool.kind === 'pencil') ui.mbPencil?.classList.add('selected');
+    if (s.tool.kind === 'eraser') ui.mbEraser?.classList.add('selected');
+    if (s.tool.kind === 'eyedropper') ui.mbEye?.classList.add('selected');
+    if (s.tool.kind === 'bucket') ui.mbBucket?.classList.add('selected');
+  }
+
+  // =========================================================
+  // 11. Mobile drawer
+  // =========================================================
+  function isMobileUI(){
+    return window.matchMedia && window.matchMedia('(max-width: 860px)').matches;
+  }
+  function openDrawer(){
+    if (!ui.paletteDrawer) return;
+    ui.paletteDrawer.classList.add('open');
+    ui.paletteDrawer.setAttribute('aria-hidden','false');
+    syncPaletteSelection();
+  }
+  function closeDrawer(){
+    if (!ui.paletteDrawer) return;
+    ui.paletteDrawer.classList.remove('open');
+    ui.paletteDrawer.setAttribute('aria-hidden','true');
+  }
+  function toggleDrawer(){
+    if (!ui.paletteDrawer) return;
+    if (ui.paletteDrawer.classList.contains('open')) closeDrawer();
+    else openDrawer();
+  }
+
+  // =========================================================
+  // 12. Stroke patch helper
+  // =========================================================
+  function beginStroke(s){
+    const layerIndex = s.layers.active;
+    s.ui.drawing.stroke = { layerIndex, map: new Map() }; // idx -> before
+  }
+
+  function recordBeforeOnce(stroke, idx, beforeVal){
+    if (!stroke.map.has(idx)) stroke.map.set(idx, beforeVal >>> 0);
+  }
+
+  function endStrokeAndCommit(s){
+    const stroke = s.ui.drawing.stroke;
+    if (!stroke) return;
+    const keys = Array.from(stroke.map.keys());
+    if (!keys.length){ s.ui.drawing.stroke = null; return; }
+
+    keys.sort((a,b)=>a-b);
+    const before = new Uint32Array(keys.length);
+    const after = new Uint32Array(keys.length);
+
+    const layer = s.layers.list[stroke.layerIndex];
+    const px = layer.pixels;
+    for (let i=0;i<keys.length;i++){
+      const idx = keys[i];
+      before[i] = stroke.map.get(idx);
+      after[i] = px[idx] >>> 0;
+    }
+
+    history.push(patchEntry(stroke.layerIndex, new Uint32Array(keys), before, after));
+    s.ui.drawing.stroke = null;
+  }
+
+  // =========================================================
+  // 13. Flood fill (u32)  ※bucketは大きく変わるのでsnapshotで履歴
+  // =========================================================
+  function floodFillU32(s, sx,sy, newVal){
+    const layer = getActiveLayer(s);
+    const px = layer.pixels;
+    const w = s.grid.w, h = s.grid.h;
+    const start = idxOf(s,sx,sy);
+    const target = px[start];
+    if (target === newVal) return;
+
+    const stack = [start];
+    const visited = new Uint8Array(w*h);
+
+    while (stack.length){
+      const i = stack.pop();
+      if (visited[i]) continue;
+      visited[i] = 1;
+      if (px[i] !== target) continue;
+      px[i] = newVal;
+      const x = i % w;
+      const y = (i / w) | 0;
+      if (x>0) stack.push(i-1);
+      if (x<w-1) stack.push(i+1);
+      if (y>0) stack.push(i-w);
+      if (y<h-1) stack.push(i+w);
+    }
+  }
+
+  // =========================================================
+  // 14. Import / Export (u32)
+  // =========================================================
+  function exportPNG(){
+    const scale = clamp(parseInt(ui.exportScale.value,10) || 1, 1, 64);
+    state.settings.exportScale = scale;
+    syncInputsFromState(state);
+
+    const out = document.createElement('canvas');
+    out.width = state.grid.w * scale;
+    out.height = state.grid.h * scale;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+
+    // render composite at native resolution, then scale
+    ensureBuffers(state);
+    compositeLayers(state);
+
+    if (isLittleEndian){
+      buffer.rgbaU32View.set(buffer.compositeU32);
+    } else {
+      const d = buffer.imageData.data;
+      const comp = buffer.compositeU32;
+      for (let i=0;i<comp.length;i++){
+        const u = comp[i];
+        const r = u & 255, g = (u>>8)&255, b=(u>>16)&255, a=(u>>24)&255;
+        const j = i*4;
+        d[j]=r; d[j+1]=g; d[j+2]=b; d[j+3]=a;
+      }
+    }
+    buffer.ctx.putImageData(buffer.imageData, 0, 0);
+
+    octx.drawImage(buffer.canvas, 0, 0, out.width, out.height);
+
+    const url = out.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pixel_' + state.grid.w + 'x' + state.grid.h + '_x' + scale + '.png';
+    document.body.appendChild(a);
+    a.click();
+    requestAnimationFrame(()=>a.remove());
+  }
+
+  async function importImageFile(file){
+    state.settings.importMode = ui.importMode.value;
+    state.settings.dither = ui.ditherMode.value;
+    state.settings.alphaTh = clamp(parseInt(ui.alphaThreshold.value,10) || 0, 0, 255);
+
+    const mode = state.settings.importMode;
+    const dith = state.settings.dither;
+    const alphaTh = state.settings.alphaTh;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        history.push(snapshotOf(state));
+
+        const off = document.createElement('canvas');
+        off.width = state.grid.w;
+        off.height = state.grid.h;
+        const octx = off.getContext('2d', { willReadFrequently: true });
+        octx.imageSmoothingEnabled = true;
+        octx.clearRect(0,0,state.grid.w,state.grid.h);
+        octx.drawImage(img, 0, 0, state.grid.w, state.grid.h);
+        const imgData = octx.getImageData(0,0,state.grid.w,state.grid.h);
+
+        let px;
+        if (mode === 'raw'){
+          px = importRaw(imgData, state.grid.w, state.grid.h, alphaTh);
+        } else {
+          const pal = buildPaletteRGB(state.palette.hex);
+          px = (dith === 'fs')
+            ? quantizeWithFloydSteinbergU32(imgData, state.grid.w, state.grid.h, pal, alphaTh)
+            : quantizeNoDitherU32(imgData, state.grid.w, state.grid.h, pal, alphaTh);
+        }
+
+        reduce(state, {type:'SET_ACTIVE_PIXELS', pixels: px});
+
+        syncInputsFromState(state);
+        updateLayerUI(state);
+        syncPaletteSelection();
+        updateToolUI(state);
+        setupCanvasFromState(state);
+        render(state);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function importRaw(imgData, w, h, alphaTh){
+    const out = new Uint32Array(w*h);
+    const d = imgData.data;
+    for (let i=0;i<w*h;i++){
+      const j = i*4;
+      const a = d[j+3];
+      if (a < alphaTh) { out[i]=0; continue; }
+      out[i] = packABGR(d[j], d[j+1], d[j+2], a);
+    }
+    return out;
+  }
+
+  function quantizeNoDitherU32(imgData, w, h, pal, alphaTh){
+    const out = new Uint32Array(w*h);
+    const d = imgData.data;
+    for (let i=0;i<w*h;i++){
+      const j = i*4;
+      const a = d[j+3];
+      if (a < alphaTh){ out[i]=0; continue; }
+      const u = packABGR(d[j], d[j+1], d[j+2], 255);
+      out[i] = nearestToPaletteU32(u, pal);
+    }
+    return out;
+  }
+
+  function quantizeWithFloydSteinbergU32(imgData, w, h, pal, alphaTh){
+    const out = new Uint32Array(w*h);
+    const buf = new Float32Array(w*h*4);
+    for (let i=0;i<buf.length;i++) buf[i] = imgData.data[i];
+
+    const idxAt = (x,y) => (y*w + x)*4;
+
+    function distribute(x,y,f,er,eg,eb){
+      if (x<0 || y<0 || x>=w || y>=h) return;
+      const j = idxAt(x,y);
+      if (buf[j+3] < alphaTh) return;
+      buf[j] = clamp(buf[j] + er*f, 0, 255);
+      buf[j+1] = clamp(buf[j+1] + eg*f, 0, 255);
+      buf[j+2] = clamp(buf[j+2] + eb*f, 0, 255);
+    }
+
+    for (let y=0;y<h;y++){
+      for (let x=0;x<w;x++){
+        const j = idxAt(x,y);
+        const a = buf[j+3];
+        const i = y*w + x;
+        if (a < alphaTh){ out[i]=0; continue; }
+        const oldR = buf[j], oldG = buf[j+1], oldB = buf[j+2];
+        const nearU = nearestToPaletteU32(packABGR(oldR, oldG, oldB, 255), pal);
+        out[i] = nearU;
+        const nr = nearU & 255, ng=(nearU>>8)&255, nb=(nearU>>16)&255;
+        const errR = oldR - nr;
+        const errG = oldG - ng;
+        const errB = oldB - nb;
+        distribute(x+1, y,   7/16, errR,errG,errB);
+        distribute(x-1, y+1, 3/16, errR,errG,errB);
+        distribute(x,   y+1, 5/16, errR,errG,errB);
+        distribute(x+1, y+1, 1/16, errR,errG,errB);
+      }
+    }
+    return out;
+  }
+
+  // =========================================================
+  // 15. Undo/Redo handlers
+  // =========================================================
+  function doUndo(){
+    const entry = history.undo();
+    if (!entry) return;
+    // snapshotはそれ自体が保存状態なのでそのまま復元
+    if (entry.kind === 'snapshot'){
+      restoreInto(state, entry);
+    } else {
+      history.applyUndo(state, entry);
+    }
+    syncInputsFromState(state);
+    updateLayerUI(state);
+    syncPaletteSelection();
+    updateToolUI(state);
+    setupCanvasFromState(state);
+    render(state);
+  }
+
+  function doRedo(){
+    const entry = history.redo();
+    if (!entry) return;
+    if (entry.kind === 'snapshot'){
+      restoreInto(state, entry);
+    } else {
+      history.applyRedo(state, entry);
+    }
+    syncInputsFromState(state);
+    updateLayerUI(state);
+    syncPaletteSelection();
+    updateToolUI(state);
+    setupCanvasFromState(state);
+    render(state);
+  }
+
+  // =========================================================
+  // 16. Pointer events drawing
+  // =========================================================
+  function paintCell(s, x,y, value){
+    if (!inBounds(s,x,y)) return;
+    const layer = getActiveLayer(s);
+    const idx = idxOf(s,x,y);
+    const old = layer.pixels[idx];
+    if (old === value) return;
+    // record history patch info
+    const stroke = s.ui.drawing.stroke;
+    if (stroke) recordBeforeOnce(stroke, idx, old);
+    layer.pixels[idx] = value;
+  }
+
+  function handlePointerDown(e){
+    e.preventDefault();
+    ui.stage.setPointerCapture(e.pointerId);
+
+    // eyedropper
+    if (state.tool.kind === 'eyedropper'){
+      const pos = canvasToGrid(state, e.clientX, e.clientY);
+      if (inBounds(state,pos.x,pos.y)){
+        state.tool.color = topVisiblePixelAt(state,pos.x,pos.y) >>> 0;
+        dispatch({type:'SET_TOOL', tool:'pencil', undoable:false});
+        syncPaletteSelection();
+      }
+      return;
+    }
+
+    // bucket
+    if (state.tool.kind === 'bucket'){
+      const pos = canvasToGrid(state, e.clientX, e.clientY);
+      if (!inBounds(state,pos.x,pos.y)) return;
+      history.push(snapshotOf(state));
+      const isRight = (e.pointerType === 'mouse' && e.button === 2);
+      const fill = (state.tool.kind === 'eraser' || isRight) ? 0 : state.tool.color;
+      floodFillU32(state, pos.x,pos.y, fill);
+      render(state);
+      return;
+    }
+
+    state.ui.drawing.active = true;
+    state.ui.drawing.pointerId = e.pointerId;
+    beginStroke(state);
+
+    const isRight = (e.pointerType === 'mouse' && e.button === 2);
+    const isErase = (state.tool.kind === 'eraser') || isRight;
+    const value = isErase ? 0 : state.tool.color;
+
+    const pos = canvasToGrid(state, e.clientX, e.clientY);
+    paintCell(state, pos.x,pos.y, value);
+
+    state.ui.drawing.last = {x: pos.x, y: pos.y, value};
+    render(state);
+  }
+
+  function handlePointerMove(e){
+    if (!state.ui.drawing.active) return;
+    if (state.ui.drawing.pointerId !== e.pointerId) return;
+    e.preventDefault();
+
+    const pos = canvasToGrid(state, e.clientX, e.clientY);
+    if (!inBounds(state,pos.x,pos.y)) return;
+
+    const last = state.ui.drawing.last;
+    if (!last) return;
+
+    // 右ドラッグ消し（マウスのみ）
+    const isRight = (e.pointerType === 'mouse' && (e.buttons & 2));
+    const isErase = (state.tool.kind === 'eraser') || isRight;
+    const value = isErase ? 0 : state.tool.color;
+
+    if (pos.x === last.x && pos.y === last.y) return;
+
+    drawLineOnGrid(last.x, last.y, pos.x, pos.y, (x,y) => paintCell(state, x,y, value));
+    state.ui.drawing.last = {x: pos.x, y: pos.y, value};
+    render(state);
+  }
+
+  function handlePointerUp(e){
+    if (state.ui.drawing.pointerId !== e.pointerId) return;
+    state.ui.drawing.active = false;
+    state.ui.drawing.pointerId = null;
+    state.ui.drawing.last = null;
+
+    endStrokeAndCommit(state);
+    // commit後にUI更新（描画はすでに最新）
+    syncInputsFromState(state);
+    updateLayerUI(state);
+    syncPaletteSelection();
+    updateToolUI(state);
+  }
+
+  // =========================================================
+  // 17. Bindings
+  // =========================================================
+  function bindUI(){
+    ui.toolPencil.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'pencil', undoable:false}));
+    ui.toolEraser.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'eraser', undoable:false}));
+    ui.toolEyedropper.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'eyedropper', undoable:false}));
+    ui.toolBucket.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'bucket', undoable:false}));
+
+    ui.mbPencil?.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'pencil', undoable:false}));
+    ui.mbEraser?.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'eraser', undoable:false}));
+    ui.mbEye?.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'eyedropper', undoable:false}));
+    ui.mbBucket?.addEventListener('click', () => dispatch({type:'SET_TOOL', tool:'bucket', undoable:false}));
+
+    ui.mbUndo?.addEventListener('click', () => doUndo());
+    ui.mbRedo?.addEventListener('click', () => doRedo());
+    ui.mbPalette?.addEventListener('click', () => toggleDrawer());
+    ui.drawerClose?.addEventListener('click', () => closeDrawer());
+
+    ui.apply.addEventListener('click', () => {
+      const w = clamp(parseInt(ui.gridW.value,10) || state.grid.w, 1, 2048);
+      const h = clamp(parseInt(ui.gridH.value,10) || state.grid.h, 1, 2048);
+      const cell = clamp(parseInt(ui.cellSize.value,10) || state.grid.cellSize, 1, 64);
+      if (w===state.grid.w && h===state.grid.h && cell===state.grid.cellSize) return;
+      dispatch({type:'RESIZE_GRID', w, h, cellSize: cell, undoable:true, historyMode:'snapshot'});
+    });
+
+    ui.clear.addEventListener('click', () => dispatch({type:'CLEAR_LAYER', undoable:true, historyMode:'snapshot'}));
+
+    ui.undoBtn.addEventListener('click', () => doUndo());
+    ui.redoBtn.addEventListener('click', () => doRedo());
+
+    ui.layerSelect.addEventListener('change', () => dispatch({type:'SET_ACTIVE_LAYER', index: parseInt(ui.layerSelect.value,10), undoable:false}));
+    ui.layerVisible.addEventListener('change', () => dispatch({type:'SET_LAYER_VISIBLE', visible: !!ui.layerVisible.checked, undoable:true, historyMode:'snapshot'}));
+
+    ui.layerAddBtn.addEventListener('click', () => dispatch({type:'ADD_LAYER', name: 'レイヤー'+state.layers.nextId, undoable:true, historyMode:'snapshot'}));
+    ui.layerDeleteBtn.addEventListener('click', () => dispatch({type:'DELETE_LAYER', undoable:true, historyMode:'snapshot'}));
+    ui.layerDupBtn.addEventListener('click', () => dispatch({type:'DUP_LAYER', undoable:true, historyMode:'snapshot'}));
+    ui.layerUpBtn.addEventListener('click', () => dispatch({type:'MOVE_LAYER', to: state.layers.active-1, undoable:true, historyMode:'snapshot'}));
+    ui.layerDownBtn.addEventListener('click', () => dispatch({type:'MOVE_LAYER', to: state.layers.active+1, undoable:true, historyMode:'snapshot'}));
+
+    ui.layerRenameBtn.addEventListener('click', () => dispatch({type:'RENAME_LAYER', name: ui.layerNameInput.value, undoable:true, historyMode:'snapshot'}));
+    ui.layerNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        dispatch({type:'RENAME_LAYER', name: ui.layerNameInput.value, undoable:true, historyMode:'snapshot'});
+      }
+    });
+
+    ui.addColorBtn.addEventListener('click', () => dispatch({type:'ADD_COLOR', hex: ui.palettePicker.value, undoable:true, historyMode:'snapshot'}));
+    ui.addCurrentBtn.addEventListener('click', () => {
+      if (!state.tool.color){ alert('現在色が透過です。透過はパレットに追加できません。'); return; }
+      dispatch({type:'ADD_COLOR', hex: u32ToHex(state.tool.color), undoable:true, historyMode:'snapshot'});
+    });
+
+    ui.drawerAdd?.addEventListener('click', () => {
+      dispatch({type:'ADD_COLOR', hex: ui.drawerPicker.value, undoable:true, historyMode:'snapshot'});
+      syncPaletteSelection();
+    });
+    ui.drawerAddCurrent?.addEventListener('click', () => {
+      if (!state.tool.color){ alert('現在色が透過です。透過はパレットに追加できません。'); return; }
+      dispatch({type:'ADD_COLOR', hex: u32ToHex(state.tool.color), undoable:true, historyMode:'snapshot'});
+      syncPaletteSelection();
+    });
+
+    ui.applyPresetBtn.addEventListener('click', () => {
+      const p = getPreset(ui.palettePresetSelect.value);
+      if (p) dispatch({type:'APPLY_PALETTE_SET', palette: p, undoable:true, historyMode:'snapshot'});
+    });
+    ui.drawerPresetApply?.addEventListener('click', () => {
+      const p = getPreset(ui.drawerPresetSelect.value);
+      if (p) dispatch({type:'APPLY_PALETTE_SET', palette: p, undoable:true, historyMode:'snapshot'});
+    });
+
+    ui.savePaletteBtn.addEventListener('click', () => saveCurrentPaletteAs(ui.savePaletteName.value));
+    ui.drawerSaveBtn?.addEventListener('click', () => saveCurrentPaletteAs(ui.drawerSaveName.value));
+
+    ui.loadSavedPaletteBtn.addEventListener('click', () => {
+      const n = ui.savedPaletteSelect.value;
+      if (!n){ alert('保存済みパレットを選択してください。'); return; }
+      loadSavedPalette(n);
+    });
+    ui.drawerLoadSavedBtn?.addEventListener('click', () => {
+      const n = ui.drawerSavedSelect.value;
+      if (!n){ alert('保存済みパレットを選択してください。'); return; }
+      loadSavedPalette(n);
+    });
+
+    ui.deleteSavedPaletteBtn.addEventListener('click', () => {
+      const n = ui.savedPaletteSelect.value;
+      if (!n){ alert('削除するパレットを選択してください。'); return; }
+      deleteSavedPalette(n);
+    });
+    ui.drawerDeleteSavedBtn?.addEventListener('click', () => {
+      const n = ui.drawerSavedSelect.value;
+      if (!n){ alert('削除するパレットを選択してください。'); return; }
+      deleteSavedPalette(n);
+    });
+
+    ui.savePNG.addEventListener('click', () => exportPNG());
+
+    ui.loadPNG.addEventListener('click', () => ui.fileInput.click());
+    ui.fileInput.addEventListener('change', () => {
+      const file = ui.fileInput.files && ui.fileInput.files[0];
+      if (file) importImageFile(file);
+      ui.fileInput.value = '';
+    });
+
+    // D&D
+    ui.stage.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    ui.stage.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) importImageFile(file);
+    });
+
+    // pointer events
+    ui.stage.addEventListener('pointerdown', handlePointerDown);
+    ui.stage.addEventListener('pointermove', handlePointerMove);
+    ui.stage.addEventListener('pointerup', handlePointerUp);
+    ui.stage.addEventListener('pointercancel', handlePointerUp);
+    ui.stage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // keyboard
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'b') dispatch({type:'SET_TOOL', tool:'pencil', undoable:false});
+      if (k === 'e') dispatch({type:'SET_TOOL', tool:'eraser', undoable:false});
+      if (k === 'i') dispatch({type:'SET_TOOL', tool:'eyedropper', undoable:false});
+      if (k === 'g') dispatch({type:'SET_TOOL', tool:'bucket', undoable:false});
+      if (e.ctrlKey && !e.shiftKey && k === 'z'){ e.preventDefault(); doUndo(); }
+      if ((e.ctrlKey && k === 'y') || (e.ctrlKey && e.shiftKey && k === 'z')){ e.preventDefault(); doRedo(); }
+    });
+
+    window.addEventListener('resize', () => { if (!isMobileUI()) closeDrawer(); });
+  }
+
+  // =========================================================
+  // 18. Boot
+  // =========================================================
+  function boot(){
+    refreshSavedPaletteSelects();
+    bindUI();
+    syncInputsFromState(state);
+    updateLayerUI(state);
+    updateToolUI(state);
+    setupCanvasFromState(state);
+    syncPaletteSelection();
+    render(state);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
